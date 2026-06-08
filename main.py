@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 MARKET_OPEN_ET  = datetime.time(9, 30)
 MARKET_CLOSE_ET = datetime.time(16, 0)
-CYCLE_INTERVAL  = 300   # seconds between cycles (5 minutes)
+CYCLE_INTERVAL  = 60    # seconds between cycles (1 minute, used in --daemon/AWS mode)
 ET_OFFSET       = -4    # EDT (summer). Change to -5 in winter (EST)
 
 
