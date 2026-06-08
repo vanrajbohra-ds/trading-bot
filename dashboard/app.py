@@ -290,7 +290,7 @@ with col_pos:
             color = "#00c853" if val.startswith("+") else "#ff1744"
             return f"color: {color}"
 
-        styled = df_pos.style.applymap(color_pnl, subset=["P&L", "P&L %"])
+        styled = df_pos.style.map(color_pnl, subset=["P&L", "P&L %"])
         st.dataframe(styled, use_container_width=True, hide_index=True)
     else:
         st.info("No open positions.")
@@ -367,7 +367,7 @@ with col_history:
         def color_action(val):
             return "color: #00c853" if val == "BUY" else "color: #ff1744"
 
-        styled2 = df_hist2.style.applymap(color_action, subset=["Action"])
+        styled2 = df_hist2.style.map(color_action, subset=["Action"])
         st.dataframe(styled2, use_container_width=True, hide_index=True, height=280)
     else:
         st.info("No trade history yet.")
