@@ -47,36 +47,38 @@ class TelegramNotifier:
         )
         self.send(msg)
 
-    def cycle_summary(self, trades_placed: int, trades_skipped: int,
-                      portfolio_value: float, cash: float,
-                      decisions: list = None):
-        pnl = portfolio_value - 100_000
-        pnl_icon = "📈" if pnl >= 0 else "📉"
+    def error_alert(self, context: str, error: str):
+        msg = (
+            f"❌ <b>BOT ERROR</b>\n"
+            f"Context: {context}\n"
+            f"Error:   {error}"
+        )
+        self.send(msg)
+
+    def daily_summary(self, trades_placed: int, trades_sold: int,
+                      pnl_today: float, portfolio_value: float,
+                      cash: float, positions: dict):
+        total_pnl = portfolio_value - 100_000
+        day_icon  = "📈" if pnl_today >= 0 else "📉"
+        tot_icon  = "📈" if total_pnl >= 0 else "📉"
 
         msg = (
-            f"📊 <b>CYCLE COMPLETE</b>\n"
-            f"Trades:    {trades_placed} placed | {trades_skipped} skipped\n"
-            f"Portfolio: ${portfolio_value:,.2f}\n"
-            f"Cash:      ${cash:,.2f}\n"
-            f"Total P&L: {pnl_icon} ${pnl:+,.2f}\n"
+            f"📅 <b>END OF DAY SUMMARY</b>\n"
+            f"{'─' * 28}\n"
+            f"Trades Today:  {trades_placed} buys | {trades_sold} sells\n"
+            f"Day P&L:       {day_icon} ${pnl_today:+,.2f}\n"
+            f"Total P&L:     {tot_icon} ${total_pnl:+,.2f}\n"
+            f"Portfolio:     ${portfolio_value:,.2f}\n"
+            f"Cash:          ${cash:,.2f}\n"
         )
 
-        if decisions:
-            msg += "\n<b>AI Decisions:</b>\n"
-            for d in decisions:
-                action = d.get("action", "HOLD")
-                conf   = d.get("confidence", 0)
-                sym    = d.get("symbol", "")
-                reason = d.get("skip_reason", "")
-                if action == "BUY":
-                    icon = "🟢"
-                elif action == "SELL":
-                    icon = "🔴"
-                else:
-                    icon = "⚪"
-                line = f"{icon} {sym}: {action} ({conf}%)"
-                if reason:
-                    line += f" — {reason}"
-                msg += line + "\n"
+        if positions:
+            msg += f"\n<b>Open Positions:</b>\n"
+            for sym, p in positions.items():
+                pct = p.get("unrealized_plpc", 0) * 100
+                pct_icon = "📈" if pct >= 0 else "📉"
+                msg += f"  {pct_icon} {sym}: {p['qty']} shares ({pct:+.1f}%)\n"
+        else:
+            msg += "\nNo open positions."
 
         self.send(msg)

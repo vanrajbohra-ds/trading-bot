@@ -28,6 +28,7 @@ MARKET_OPEN_ET  = datetime.time(9, 30)
 MARKET_CLOSE_ET = datetime.time(16, 0)
 CYCLE_INTERVAL  = 60    # seconds between cycles (1 minute, used in --daemon/AWS mode)
 ET_OFFSET       = -4    # EDT (summer). Change to -5 in winter (EST)
+EOD_WINDOW_MIN  = 15    # send daily summary if within this many minutes of close
 
 
 def _now_et() -> datetime.datetime:
@@ -42,6 +43,41 @@ def _is_market_hours() -> bool:
     return MARKET_OPEN_ET <= now.time() <= MARKET_CLOSE_ET
 
 
+def _is_near_close() -> bool:
+    """True if we're within EOD_WINDOW_MIN minutes before market close."""
+    now = _now_et()
+    if now.weekday() >= 5:
+        return False
+    close_dt = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    mins_to_close = (close_dt - now).total_seconds() / 60
+    return 0 <= mins_to_close <= EOD_WINDOW_MIN
+
+
+def _send_daily_summary():
+    from execution.alpaca_client import AlpacaClient
+    from execution.telegram_notifier import TelegramNotifier
+    alpaca   = AlpacaClient()
+    telegram = TelegramNotifier()
+    try:
+        account    = alpaca.get_account()
+        positions  = alpaca.get_positions()
+        pnl_today  = alpaca.get_daily_pnl()
+        orders     = alpaca.get_orders_today()
+        buys  = sum(1 for o in orders if o.get("side") == "buy")
+        sells = sum(1 for o in orders if o.get("side") == "sell")
+        telegram.daily_summary(
+            trades_placed=buys,
+            trades_sold=sells,
+            pnl_today=pnl_today,
+            portfolio_value=account["portfolio_value"],
+            cash=account["cash"],
+            positions=positions,
+        )
+        logger.info("End-of-day summary sent to Telegram")
+    except Exception as e:
+        logger.error(f"Failed to send daily summary: {e}")
+
+
 def run_once():
     logger.info("=== Trading Bot starting cycle ===")
     try:
@@ -50,6 +86,11 @@ def run_once():
     except Exception as e:
         logger.exception(f"Unhandled error in trading cycle: {e}")
         sys.exit(1)
+
+    if _is_near_close():
+        logger.info("Near market close — sending end-of-day summary")
+        _send_daily_summary()
+
     logger.info("=== Cycle finished ===")
 
 

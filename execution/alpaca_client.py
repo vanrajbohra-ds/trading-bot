@@ -90,6 +90,39 @@ class AlpacaClient:
             logger.error(f"Order failed: {side.upper()} {qty} {symbol} | {r.status_code} {r.text}")
             return {"success": False, "error": r.text, "status_code": r.status_code}
 
+    def get_orders_today(self) -> list:
+        """Return all filled orders placed today."""
+        import datetime
+        today = datetime.date.today().isoformat()
+        try:
+            orders = self._get("/orders", params={
+                "status": "filled",
+                "after": f"{today}T00:00:00Z",
+                "limit": 500,
+                "direction": "asc",
+            })
+            return orders if isinstance(orders, list) else []
+        except Exception as e:
+            logger.warning(f"Could not fetch today's orders: {e}")
+            return []
+
+    def get_daily_pnl(self) -> float:
+        """Return today's P&L from portfolio history."""
+        try:
+            data = self._get("/account/portfolio/history", params={
+                "period": "1D",
+                "timeframe": "5Min",
+            })
+            equities = data.get("equity") or []
+            if len(equities) >= 2:
+                start = next((v for v in equities if v), None)
+                end   = equities[-1]
+                if start and end:
+                    return float(end) - float(start)
+        except Exception as e:
+            logger.warning(f"Could not fetch portfolio history: {e}")
+        return 0.0
+
     def get_latest_price(self, symbol: str) -> float:
         try:
             data = self._get(f"/stocks/{symbol}/quotes/latest")
