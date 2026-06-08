@@ -39,6 +39,7 @@ def run_cycle():
     # --- Agent analysis and trading ---
     trades_placed = 0
     trades_skipped = 0
+    decisions_log = []
 
     for symbol in WATCHLIST:
         logger.info(f"--- Analyzing {symbol} ---")
@@ -58,34 +59,46 @@ def run_cycle():
 
         logger.info(f"[{symbol}] Decision: {decision.action} confidence={decision.confidence}% | {decision.rationale}")
 
+        decision_entry = {"symbol": symbol, "action": decision.action, "confidence": decision.confidence}
+
         if decision.confidence < MIN_CONFIDENCE:
             logger.info(f"[{symbol}] Skipped — confidence {decision.confidence}% < threshold {MIN_CONFIDENCE}%")
+            decision_entry["skip_reason"] = f"low conf"
+            decisions_log.append(decision_entry)
             trades_skipped += 1
             continue
 
         if decision.action == "HOLD":
             logger.info(f"[{symbol}] HOLD — no trade")
+            decisions_log.append(decision_entry)
             trades_skipped += 1
             continue
 
         if decision.action == "BUY":
             if not risk.can_open_position(symbol, positions):
                 logger.info(f"[{symbol}] Skipped BUY — max positions reached")
+                decision_entry["skip_reason"] = "max positions"
+                decisions_log.append(decision_entry)
                 trades_skipped += 1
                 continue
             price = technical.current_price or 1.0
             qty = risk.calculate_position_size(decision.confidence, account["cash"], price)
             if qty <= 0:
-                logger.info(f"[{symbol}] Skipped BUY — insufficient cash for 1 share at ${price:.2f}")
+                logger.info(f"[{symbol}] Skipped BUY — insufficient cash")
+                decision_entry["skip_reason"] = "no cash"
+                decisions_log.append(decision_entry)
                 trades_skipped += 1
                 continue
         elif decision.action == "SELL":
             qty = pos["qty"]
             if qty <= 0:
-                logger.info(f"[{symbol}] Skipped SELL — no position to sell")
+                logger.info(f"[{symbol}] Skipped SELL — no position")
+                decision_entry["skip_reason"] = "no position"
+                decisions_log.append(decision_entry)
                 trades_skipped += 1
                 continue
         else:
+            decisions_log.append(decision_entry)
             trades_skipped += 1
             continue
 
@@ -94,6 +107,7 @@ def run_cycle():
             trades_placed += 1
             account = alpaca.get_account()
             positions = alpaca.get_positions()
+            decisions_log.append(decision_entry)
             telegram.trade_alert(
                 symbol=symbol,
                 action=decision.action,
@@ -104,6 +118,8 @@ def run_cycle():
             )
         else:
             logger.error(f"[{symbol}] Order failed: {result.get('error')}")
+            decision_entry["skip_reason"] = "order failed"
+            decisions_log.append(decision_entry)
             trades_skipped += 1
 
     telegram.cycle_summary(
@@ -111,5 +127,6 @@ def run_cycle():
         trades_skipped=trades_skipped,
         portfolio_value=account["portfolio_value"],
         cash=account["cash"],
+        decisions=decisions_log,
     )
     logger.info(f"Cycle complete — {trades_placed} trades placed, {trades_skipped} skipped")

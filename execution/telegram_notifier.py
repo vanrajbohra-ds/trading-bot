@@ -48,12 +48,35 @@ class TelegramNotifier:
         self.send(msg)
 
     def cycle_summary(self, trades_placed: int, trades_skipped: int,
-                      portfolio_value: float, cash: float):
+                      portfolio_value: float, cash: float,
+                      decisions: list = None):
+        pnl = portfolio_value - 100_000
+        pnl_icon = "📈" if pnl >= 0 else "📉"
+
         msg = (
             f"📊 <b>CYCLE COMPLETE</b>\n"
-            f"Trades Placed:  {trades_placed}\n"
-            f"Skipped:        {trades_skipped}\n"
-            f"Portfolio:      ${portfolio_value:,.2f}\n"
-            f"Cash:           ${cash:,.2f}"
+            f"Trades:    {trades_placed} placed | {trades_skipped} skipped\n"
+            f"Portfolio: ${portfolio_value:,.2f}\n"
+            f"Cash:      ${cash:,.2f}\n"
+            f"Total P&L: {pnl_icon} ${pnl:+,.2f}\n"
         )
+
+        if decisions:
+            msg += "\n<b>AI Decisions:</b>\n"
+            for d in decisions:
+                action = d.get("action", "HOLD")
+                conf   = d.get("confidence", 0)
+                sym    = d.get("symbol", "")
+                reason = d.get("skip_reason", "")
+                if action == "BUY":
+                    icon = "🟢"
+                elif action == "SELL":
+                    icon = "🔴"
+                else:
+                    icon = "⚪"
+                line = f"{icon} {sym}: {action} ({conf}%)"
+                if reason:
+                    line += f" — {reason}"
+                msg += line + "\n"
+
         self.send(msg)

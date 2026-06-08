@@ -2,7 +2,7 @@ import json as _json, os as _os
 _wl_path = _os.path.join(_os.path.dirname(__file__), "watchlist.json")
 WATCHLIST = _json.load(open(_wl_path)) if _os.path.exists(_wl_path) else ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN"]
 
-MIN_CONFIDENCE = 70
+MIN_CONFIDENCE = 65
 MAX_POSITIONS = 5
 STOP_LOSS_PCT = 0.07
 TAKE_PROFIT_PCT = 0.15
