@@ -10,12 +10,15 @@ from env_loader import load_env
 load_env()
 
 _fmt = "%(asctime)s %(levelname)s %(message)s"
+_logs_dir = os.path.join(os.path.dirname(__file__), "logs")
+os.makedirs(_logs_dir, exist_ok=True)
+
 _console = logging.StreamHandler(sys.stdout)
 _console.setFormatter(logging.Formatter(_fmt))
 if hasattr(_console.stream, "reconfigure"):
     _console.stream.reconfigure(encoding="utf-8", errors="replace")
 _file = logging.FileHandler(
-    os.path.join(os.path.dirname(__file__), "logs", "trading_bot.log"), encoding="utf-8"
+    os.path.join(_logs_dir, "trading_bot.log"), encoding="utf-8"
 )
 _file.setFormatter(logging.Formatter(_fmt))
 logging.basicConfig(level=logging.INFO, handlers=[_console, _file])
