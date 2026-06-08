@@ -7,6 +7,9 @@ on:
     - cron: '0 20 * * 1-5'   # catch the 4:00 PM ET close
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   trade:
     runs-on: ubuntu-latest
