@@ -5,7 +5,8 @@ logger = logging.getLogger(__name__)
 
 
 class RiskManager:
-    def calculate_position_size(self, confidence: int, available_cash: float, price: float) -> int:
+    def calculate_position_size(self, confidence: int, available_cash: float,
+                               price: float, buying_power: float = None) -> int:
         fraction = 0.0
         for low, high, frac in POSITION_SIZE_BANDS:
             if low <= confidence <= high:
@@ -13,17 +14,25 @@ class RiskManager:
                 break
         if fraction == 0 or price <= 0:
             return 0
-        shares = int((available_cash * fraction) / price)
-        return max(1, shares)
+        # Use the smaller of (fraction of cash) and (actual buying power) to avoid rejected orders
+        budget = available_cash * fraction
+        if buying_power is not None:
+            budget = min(budget, buying_power)
+        shares = int(budget / price)
+        return max(1, shares) if budget >= price else 0
 
-    def calculate_notional_size(self, confidence: int, available_cash: float) -> float:
+    def calculate_notional_size(self, confidence: int, available_cash: float,
+                                buying_power: float = None) -> float:
         """Return dollar notional for a crypto order."""
         fraction = 0.0
         for low, high, frac in POSITION_SIZE_BANDS:
             if low <= confidence <= high:
                 fraction = frac
                 break
-        return round(available_cash * fraction, 2)
+        budget = available_cash * fraction
+        if buying_power is not None:
+            budget = min(budget, buying_power)
+        return round(budget, 2)
 
     def can_open_position(self, symbol: str, positions: dict, max_positions: int = None) -> bool:
         limit = max_positions if max_positions is not None else MAX_POSITIONS

@@ -90,8 +90,7 @@ class AlpacaClient:
 
     def submit_market_order(self, symbol: str, side: str, qty: int) -> dict:
         side = side.lower()
-        if side == "sell":
-            self.cancel_all_orders_for(symbol)
+        self.cancel_all_orders_for(symbol)  # always cancel pending orders first (prevents duplicate/blocking orders)
 
         body = {
             "symbol": symbol,

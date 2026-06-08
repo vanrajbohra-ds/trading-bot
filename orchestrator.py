@@ -65,9 +65,12 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                 logger.info(f"[{symbol}] Skipped BUY — max stock positions reached")
                 continue
             price = technical.current_price or 1.0
-            qty   = risk.calculate_position_size(decision.confidence, account["cash"], price)
+            qty   = risk.calculate_position_size(
+                decision.confidence, account["cash"], price,
+                buying_power=account.get("buying_power"),
+            )
             if qty <= 0:
-                logger.info(f"[{symbol}] Skipped BUY — insufficient cash")
+                logger.info(f"[{symbol}] Skipped BUY — insufficient cash/buying power")
                 continue
         elif decision.action == "SELL":
             qty = pos["qty"]
@@ -148,7 +151,10 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             if alpaca_sym not in positions and crypto_pos_count >= MAX_CRYPTO_POSITIONS:
                 logger.info(f"[{alpaca_sym}] Skipped BUY — max crypto positions reached")
                 continue
-            notional = risk.calculate_notional_size(decision.confidence, account["cash"])
+            notional = risk.calculate_notional_size(
+                decision.confidence, account["cash"],
+                buying_power=account.get("buying_power"),
+            )
             if notional < 1.0:
                 logger.info(f"[{alpaca_sym}] Skipped BUY — insufficient cash")
                 continue
