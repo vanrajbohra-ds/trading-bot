@@ -1,11 +1,8 @@
 name: Trading Bot
 
 on:
-  schedule:
-    # Every 5 min, 9:30 AM–4:00 PM ET (EDT = UTC-4, so 13:30–20:00 UTC)
-    # Offset by 2 min to avoid GitHub's top-of-hour congestion
-    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 13-19 * * 1-5'
-    - cron: '2 20 * * 1-5'   # catch the 4:00 PM ET close
+  # Triggered externally by cron-job.org every 5 minutes during market hours
+  # GitHub's own scheduler is unreliable for new repos
   workflow_dispatch:
 
 env:
