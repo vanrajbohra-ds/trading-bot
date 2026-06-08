@@ -1,0 +1,17 @@
+[Unit]
+Description=Autonomous Trading Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/trading_bot
+ExecStart=/usr/bin/python3 /home/ec2-user/trading_bot/main.py --daemon
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/ec2-user/trading_bot/logs/trading_bot.log
+StandardError=append:/home/ec2-user/trading_bot/logs/trading_bot.log
+
+[Install]
+WantedBy=multi-user.target

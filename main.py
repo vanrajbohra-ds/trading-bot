@@ -1,0 +1,76 @@
+import sys
+import os
+import logging
+import time
+import datetime
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+from env_loader import load_env
+load_env()
+
+_fmt = "%(asctime)s %(levelname)s %(message)s"
+_console = logging.StreamHandler(sys.stdout)
+_console.setFormatter(logging.Formatter(_fmt))
+if hasattr(_console.stream, "reconfigure"):
+    _console.stream.reconfigure(encoding="utf-8", errors="replace")
+_file = logging.FileHandler(
+    os.path.join(os.path.dirname(__file__), "logs", "trading_bot.log"), encoding="utf-8"
+)
+_file.setFormatter(logging.Formatter(_fmt))
+logging.basicConfig(level=logging.INFO, handlers=[_console, _file])
+logger = logging.getLogger(__name__)
+
+MARKET_OPEN_ET  = datetime.time(9, 30)
+MARKET_CLOSE_ET = datetime.time(16, 0)
+CYCLE_INTERVAL  = 300   # seconds between cycles (5 minutes)
+ET_OFFSET       = -4    # EDT (summer). Change to -5 in winter (EST)
+
+
+def _now_et() -> datetime.datetime:
+    utc = datetime.datetime.utcnow()
+    return utc + datetime.timedelta(hours=ET_OFFSET)
+
+
+def _is_market_hours() -> bool:
+    now = _now_et()
+    if now.weekday() >= 5:  # Saturday=5, Sunday=6
+        return False
+    return MARKET_OPEN_ET <= now.time() <= MARKET_CLOSE_ET
+
+
+def run_once():
+    logger.info("=== Trading Bot starting cycle ===")
+    try:
+        from orchestrator import run_cycle
+        run_cycle()
+    except Exception as e:
+        logger.exception(f"Unhandled error in trading cycle: {e}")
+        sys.exit(1)
+    logger.info("=== Cycle finished ===")
+
+
+def run_daemon():
+    """Daemon mode for AWS EC2 — runs every hour during market hours, idles otherwise."""
+    logger.info("=== Trading Bot daemon started (AWS EC2 mode) ===")
+    while True:
+        if _is_market_hours():
+            logger.info("Market hours — running cycle")
+            try:
+                from orchestrator import run_cycle
+                run_cycle()
+            except Exception as e:
+                logger.exception(f"Unhandled error in trading cycle: {e}")
+            logger.info(f"Sleeping {CYCLE_INTERVAL // 60} minutes until next cycle")
+            time.sleep(CYCLE_INTERVAL)
+        else:
+            now = _now_et()
+            logger.info(f"Market closed ({now.strftime('%a %H:%M ET')}) — sleeping 15 minutes")
+            time.sleep(900)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--daemon":
+        run_daemon()
+    else:
+        run_once()

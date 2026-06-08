@@ -1,0 +1,15 @@
+import os
+
+def load_env(path=None):
+    if path is None:
+        path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    path = os.path.abspath(path)
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, _, value = line.partition('=')
+            os.environ.setdefault(key.strip(), value.strip())
