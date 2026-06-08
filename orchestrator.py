@@ -86,8 +86,13 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             account.update(alpaca.get_account())
             positions.update(alpaca.get_positions())
             stock_positions = {s: p for s, p in positions.items() if "/" not in s}
-            telegram.trade_alert(symbol, decision.action, qty,
-                                 decision.confidence, decision.rationale, account["cash"])
+            telegram.trade_alert(
+                symbol, decision.action, qty,
+                decision.confidence, decision.rationale, account["cash"],
+                price=technical.current_price,
+                fundamental=fundamental,
+                technical=technical,
+            )
         else:
             logger.error(f"[{symbol}] Order failed: {result.get('error')}")
             telegram.error_alert(f"Order {decision.action} {symbol}", result.get("error", ""))
@@ -159,14 +164,14 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                 logger.info(f"[{alpaca_sym}] Skipped BUY — insufficient cash")
                 continue
             result = alpaca.submit_crypto_order(alpaca_sym, "BUY", notional)
-            qty_display = f"${notional:.2f}"
+            qty_for_alert = notional          # float → notional path in trade_alert
         elif decision.action == "SELL":
             qty = pos["qty"]
             if qty <= 0:
                 logger.info(f"[{alpaca_sym}] Skipped SELL — no position")
                 continue
             result = alpaca.submit_market_order(alpaca_sym, "SELL", qty)
-            qty_display = str(qty)
+            qty_for_alert = qty               # int → shares path in trade_alert
         else:
             continue
 
@@ -175,8 +180,13 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             account.update(alpaca.get_account())
             positions.update(alpaca.get_positions())
             crypto_positions = {s: p for s, p in positions.items() if "/" in s}
-            telegram.trade_alert(alpaca_sym, decision.action, qty_display,
-                                 decision.confidence, decision.rationale, account["cash"])
+            telegram.trade_alert(
+                alpaca_sym, decision.action, qty_for_alert,
+                decision.confidence, decision.rationale, account["cash"],
+                price=technical.current_price,
+                fundamental=fundamental,
+                technical=technical,
+            )
         else:
             logger.error(f"[{alpaca_sym}] Order failed: {result.get('error')}")
             telegram.error_alert(f"Order {decision.action} {alpaca_sym}", result.get("error", ""))
