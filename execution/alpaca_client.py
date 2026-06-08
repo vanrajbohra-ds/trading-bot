@@ -69,6 +69,25 @@ class AlpacaClient:
         except Exception as e:
             logger.warning(f"Error cancelling orders for {symbol}: {e}")
 
+    def submit_crypto_order(self, symbol: str, side: str, notional: float) -> dict:
+        """Submit a crypto order using notional (dollar) amount. Crypto uses GTC, not DAY."""
+        side = side.lower()
+        body = {
+            "symbol": symbol,
+            "notional": str(round(notional, 2)),
+            "side": side,
+            "type": "market",
+            "time_in_force": "gtc",
+        }
+        r = self._post("/orders", body)
+        if r.status_code in (200, 201):
+            data = r.json()
+            logger.info(f"Crypto order placed: {side.upper()} ${notional:.2f} of {symbol} | id={data.get('id')}")
+            return {"success": True, "order": data}
+        else:
+            logger.error(f"Crypto order failed: {side.upper()} ${notional:.2f} {symbol} | {r.status_code} {r.text}")
+            return {"success": False, "error": r.text, "status_code": r.status_code}
+
     def submit_market_order(self, symbol: str, side: str, qty: int) -> dict:
         side = side.lower()
         if side == "sell":

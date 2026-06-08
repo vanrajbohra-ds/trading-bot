@@ -26,16 +26,18 @@ class TelegramNotifier:
         except Exception as e:
             logger.warning("Telegram error: %s", e)
 
-    def trade_alert(self, symbol: str, action: str, qty: int, confidence: int,
+    def trade_alert(self, symbol: str, action: str, qty, confidence: int,
                     rationale: str, cash_remaining: float):
-        icon = "🟢" if action == "BUY" else "🔴"
+        icon  = "🟢" if action == "BUY" else "🔴"
+        label = f"${qty}" if isinstance(qty, float) else str(qty)
+        unit  = "notional" if isinstance(qty, float) else "shares"
         msg = (
             f"{icon} <b>TRADE ALERT</b>\n"
-            f"Action:    <b>{action} {symbol}</b>\n"
-            f"Shares:    {qty}\n"
-            f"Confidence:{confidence}%\n"
-            f"Rationale: {rationale}\n"
-            f"Cash Left: ${cash_remaining:,.2f}"
+            f"Action:     <b>{action} {symbol}</b>\n"
+            f"Amount:     {label} {unit}\n"
+            f"Confidence: {confidence}%\n"
+            f"Rationale:  {rationale}\n"
+            f"Cash Left:  ${cash_remaining:,.2f}"
         )
         self.send(msg)
 
