@@ -37,6 +37,19 @@ CRYPTO_SYMBOLS    = {"BTC/USD", "SOL/USD", "DOGE/USD", "AVAX/USD"}
 CRYPTO_YF_MAP     = {"BTC/USD": "BTC-USD", "SOL/USD": "SOL-USD",
                      "DOGE/USD": "DOGE-USD", "AVAX/USD": "AVAX-USD"}
 
+# Alpaca positions API returns BTCUSD (no slash); orders API returns BTC/USD.
+# Normalise positions to the slash format so CRYPTO_SYMBOLS lookups work.
+_CRYPTO_NORM = {
+    "BTCUSD":  "BTC/USD",
+    "ETHUSD":  "ETH/USD",
+    "SOLUSD":  "SOL/USD",
+    "DOGEUSD": "DOGE/USD",
+    "AVAXUSD": "AVAX/USD",
+    "LTCUSD":  "LTC/USD",
+    "LINKUSD": "LINK/USD",
+    "UNIUSD":  "UNI/USD",
+}
+
 # ── Credentials ───────────────────────────────────────────────────────────────
 def get_creds():
     try:
@@ -75,7 +88,13 @@ def get_account():
 @st.cache_data(ttl=30)
 def get_positions():
     r = requests.get(f"{BASE}/positions", headers=HEADERS, timeout=10)
-    return r.json() if r.ok else []
+    if not r.ok:
+        return []
+    raw = r.json()
+    for p in raw:
+        if isinstance(p, dict):
+            p["symbol"] = _CRYPTO_NORM.get(p["symbol"], p["symbol"])
+    return raw
 
 @st.cache_data(ttl=60)
 def get_orders(status="all", limit=200):
