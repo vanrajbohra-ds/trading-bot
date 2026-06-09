@@ -261,24 +261,64 @@ with t_ov:
         if timestamps and equity:
             df_h = pd.DataFrame({
                 "date":  [datetime.fromtimestamp(t) for t in timestamps],
-                "value": equity,
+                "value": [v for v in equity],
             })
+            # Drop leading zeros/nulls that Alpaca pads before trading started
+            df_h = df_h[df_h["value"] > 0]
+
+            # Zoom y-axis to actual range so small moves are visible
+            lo = min(df_h["value"].min(), STARTING_CAP)
+            hi = max(df_h["value"].max(), STARTING_CAP)
+            pad = max((hi - lo) * 0.15, 200)   # at least $200 padding
+            y_min = lo - pad
+            y_max = hi + pad
+
+            # Green above baseline, red below — use two filled areas
+            above = df_h["value"].clip(lower=STARTING_CAP)
+            below = df_h["value"].clip(upper=STARTING_CAP)
+
             fig = go.Figure()
+            # Red fill below $100K
             fig.add_trace(go.Scatter(
-                x=df_h["date"], y=df_h["value"], fill="tozeroy",
-                fillcolor="rgba(0,200,83,0.1)", line=dict(color="#00c853", width=2),
+                x=df_h["date"], y=below, fill="tozeroy",
+                fillcolor="rgba(255,23,68,0.0)", line=dict(width=0),
+                hoverinfo="skip", showlegend=False,
+            ))
+            fig.add_trace(go.Scatter(
+                x=df_h["date"], y=below,
+                fill="tonexty", fillcolor="rgba(255,23,68,0.15)",
+                line=dict(width=0), hoverinfo="skip", showlegend=False,
+            ))
+            # Green fill above $100K
+            fig.add_trace(go.Scatter(
+                x=df_h["date"], y=[STARTING_CAP] * len(df_h),
+                line=dict(width=0), hoverinfo="skip", showlegend=False,
+            ))
+            fig.add_trace(go.Scatter(
+                x=df_h["date"], y=above,
+                fill="tonexty", fillcolor="rgba(0,200,83,0.2)",
+                line=dict(width=0), hoverinfo="skip", showlegend=False,
+            ))
+            # Main value line
+            fig.add_trace(go.Scatter(
+                x=df_h["date"], y=df_h["value"],
+                line=dict(color="#00c853", width=2),
                 hovertemplate="<b>%{x|%b %d}</b><br>$%{y:,.2f}<extra></extra>",
+                showlegend=False,
             ))
             fig.add_hline(y=STARTING_CAP, line_dash="dash",
-                          line_color="rgba(255,255,255,0.3)", annotation_text="$100K start")
+                          line_color="rgba(255,255,255,0.35)",
+                          annotation_text="$100K start",
+                          annotation_font_color="rgba(255,255,255,0.5)")
             fig.update_layout(
                 title=dict(text="Portfolio Performance", font=dict(color="white", size=13)),
-                margin=dict(l=0, r=0, t=30, b=0), paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=0, r=0, t=30, b=0),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 xaxis=dict(showgrid=False, color="white"),
-                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.1)",
-                           color="white", tickformat="$,.0f"),
-                height=215,
+                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.08)",
+                           color="white", tickformat="$,.0f",
+                           range=[y_min, y_max]),
+                height=215, hovermode="x unified",
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
