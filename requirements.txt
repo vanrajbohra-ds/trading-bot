@@ -4,5 +4,4 @@ google-genai>=2.0.0
 requests>=2.31.0
 pandas>=2.3.0
 numpy>=1.26.4
-streamlit-autorefresh>=1.0.1
 # groq is called via requests (openai-compatible REST), no extra package needed

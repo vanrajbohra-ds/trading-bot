@@ -76,8 +76,8 @@ def _is_momentum_signal(technical) -> bool:
 def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                      decision_agent, account, positions) -> tuple:
     """Core WATCHLIST stocks. Returns (trades_placed, trades_sold)."""
-    # Exclude momentum universe to prevent double-trading
-    excl = set(MOMENTUM_STOCK_UNIVERSE) | set(MOMENTUM_CRYPTO_UNIVERSE)
+    # Exclude crypto momentum symbols so they're never treated as stocks
+    excl = set(MOMENTUM_CRYPTO_UNIVERSE)
     stock_pos = {s: p for s, p in positions.items() if "/" not in s and s not in excl}
 
     trades_sold = 0
