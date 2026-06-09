@@ -15,7 +15,7 @@ st.set_page_config(page_title="Trading Bot", page_icon="📈",
                    layout="wide", initial_sidebar_state="collapsed")
 
 # Auto-refresh every 30 s — clears cache so API calls re-fire
-_refresh_count = st_autorefresh(interval=30_000, limit=None, key="autorefresh")
+_refresh_count = st_autorefresh(interval=10_000, limit=None, key="autorefresh")
 
 st.markdown("""<style>
     .block-container{padding-top:1.5rem!important;padding-bottom:.5rem!important}
