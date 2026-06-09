@@ -29,29 +29,16 @@ CRYPTO_TAKE_PROFIT_PCT = 0.25
 CRYPTO_PORTFOLIO_CAP   = 0.35   # max 35% of total portfolio value in crypto (core + momentum)
 
 # ── Momentum / Speculative Tier ───────────────────────────────────────────────
-# A single shared 10% budget (MOMENTUM_TOTAL_BUDGET_PCT) across ALL assets —
-# stocks AND crypto combined. No per-category split. The bot scans a broad
-# universe every cycle, pre-filters by technical momentum signals, and only
-# runs the LLM on the top candidates that actually show volume + trend.
+# The bot discovers high-momentum stocks LIVE each cycle using Yahoo Finance
+# screeners (most active by volume + top day gainers). No hardcoded list —
+# the system hunts wherever the market is actually moving today.
 #
-# Stock universe — high-beta names across sectors. Add/remove freely.
-# The code automatically excludes any symbol already in WATCHLIST or
-# CRYPTO_WATCHLIST to prevent double-trading the same asset.
-MOMENTUM_STOCK_UNIVERSE = [
-    # Crypto-adjacent / high-beta tech
-    "COIN", "MSTR", "HOOD", "RIOT", "MARA",
-    # High-growth tech / AI
-    "AMD", "PLTR", "IONQ", "SMCI", "SOFI",
-    # EV / clean energy
-    "RIVN", "NIO", "LCID",
-    # Meme / high retail interest
-    "GME", "AMC",
-    # Biotech (binary event volatility)
-    "MRNA", "BNTX",
-]
-
-# Crypto universe — more volatile than BTC/SOL (core).
+# Crypto momentum universe is fixed (only a few volatile coins on Alpaca).
 MOMENTUM_CRYPTO_UNIVERSE = ["DOGE/USD", "AVAX/USD", "LINK/USD", "UNI/USD"]
+
+# How many results to pull from each Yahoo Finance screener per cycle.
+# actives + gainers are combined → up to 2× this many stock candidates.
+MOMENTUM_SCREENER_LIMIT = 20
 
 MOMENTUM_TOTAL_BUDGET_PCT  = 0.10   # 10% of portfolio across ALL momentum positions combined
 MAX_MOMENTUM_POSITIONS     = 4      # max simultaneous momentum positions (stocks + crypto)

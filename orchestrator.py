@@ -6,12 +6,13 @@ from config import (
     MAX_CRYPTO_POSITIONS, CRYPTO_STOP_LOSS_PCT, CRYPTO_TAKE_PROFIT_PCT,
     CRYPTO_PORTFOLIO_CAP, MIN_CASH_RESERVE_PCT,
     RESERVE_DEPLOY_CONFIDENCE, RESERVE_MAX_DEPLOY_PCT,
-    MOMENTUM_STOCK_UNIVERSE, MOMENTUM_CRYPTO_UNIVERSE,
+    MOMENTUM_CRYPTO_UNIVERSE, MOMENTUM_SCREENER_LIMIT,
     MOMENTUM_TOTAL_BUDGET_PCT, MAX_MOMENTUM_POSITIONS,
     MOMENTUM_MIN_CONFIDENCE, MOMENTUM_VOLUME_RATIO_MIN,
     MOMENTUM_STOCK_STOP_PCT, MOMENTUM_STOCK_TAKE_PCT,
     MOMENTUM_CRYPTO_STOP_PCT, MOMENTUM_CRYPTO_TAKE_PCT,
 )
+from execution.market_scanner import get_momentum_candidates
 from agents.fundamental_agent import FundamentalAgent
 from agents.technical_agent import TechnicalAgent
 from agents.decision_agent import DecisionAgent
@@ -252,13 +253,28 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
 
     Single shared 10% budget across ALL momentum positions (stocks + crypto combined).
     """
-    # Build the set of symbols this cycle is responsible for.
-    # Automatically exclude core symbols to prevent double-trading.
+    # Exclude core symbols so we never double-trade the same asset.
     core_syms = set(WATCHLIST) | set(CRYPTO_WATCHLIST)
-    stock_universe  = [s for s in MOMENTUM_STOCK_UNIVERSE  if s not in core_syms]
+
+    # Live screener: ask Yahoo Finance what stocks are actually moving today.
+    # Falls back to an empty list if the screener is unavailable — the cycle
+    # will still run crypto momentum and exit any open momentum positions.
+    if stock_market_open:
+        stock_universe = get_momentum_candidates(
+            limit_per_screen=MOMENTUM_SCREENER_LIMIT,
+            exclude=core_syms,
+        )
+    else:
+        stock_universe = []  # no point scanning stocks when market is closed
+
     crypto_universe = [s for s in MOMENTUM_CRYPTO_UNIVERSE if s not in core_syms]
     all_universe    = stock_universe + crypto_universe
     universe_set    = set(all_universe)
+
+    # Also include any symbols we're already holding (in case screener misses them)
+    open_momentum_held = {s for s in positions if s not in core_syms and positions[s]["qty"] > 0}
+    universe_set |= open_momentum_held
+    all_universe  = list(universe_set)
 
     momentum_pos = {s: p for s, p in positions.items() if s in universe_set}
 
