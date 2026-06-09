@@ -3,3 +3,4 @@ plotly>=5.22.0
 pandas>=2.3.0
 requests>=2.31.0
 yfinance>=0.2.65
+streamlit-autorefresh>=1.0.1
