@@ -5,6 +5,7 @@ from config import (
     CRYPTO_WATCHLIST, CRYPTO_YFINANCE_MAP,
     MAX_CRYPTO_POSITIONS, CRYPTO_STOP_LOSS_PCT, CRYPTO_TAKE_PROFIT_PCT,
     CRYPTO_PORTFOLIO_CAP, MIN_CASH_RESERVE_PCT,
+    RESERVE_DEPLOY_CONFIDENCE, RESERVE_MAX_DEPLOY_PCT,
 )
 from agents.fundamental_agent import FundamentalAgent
 from agents.technical_agent import TechnicalAgent
@@ -16,10 +17,27 @@ from execution.telegram_notifier import TelegramNotifier
 logger = logging.getLogger(__name__)
 
 
-def _investable_cash(account: dict) -> float:
-    """Cash available for new positions after reserving MIN_CASH_RESERVE_PCT of portfolio."""
+def _investable_cash(account: dict, confidence: int = 0) -> float:
+    """Cash available for new positions.
+
+    Normal signals (< RESERVE_DEPLOY_CONFIDENCE): cash minus the 20% reserve floor.
+    High-conviction signals (>= RESERVE_DEPLOY_CONFIDENCE): reserve floor is partially
+    unlocked — up to RESERVE_MAX_DEPLOY_PCT of the floor can be deployed so the bot
+    acts on rare, high-quality opportunities without leaving cash idle indefinitely.
+    """
     reserve = account["portfolio_value"] * MIN_CASH_RESERVE_PCT
-    return max(0.0, account["cash"] - reserve)
+    investable = account["cash"] - reserve
+
+    if investable < 1.0 and confidence >= RESERVE_DEPLOY_CONFIDENCE:
+        # High-conviction: allow tapping part of the reserve
+        reserve_budget = reserve * RESERVE_MAX_DEPLOY_PCT
+        investable = min(account["cash"], reserve_budget)
+        logger.info(
+            f"High-conviction signal ({confidence}%) — reserve partially unlocked "
+            f"(up to ${investable:,.0f} of the ${reserve:,.0f} floor)"
+        )
+
+    return max(0.0, investable)
 
 
 def _reload_positions(positions: dict, alpaca: AlpacaClient) -> None:
@@ -80,12 +98,12 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             if not risk.can_open_position(symbol, stock_positions):
                 logger.info(f"[{symbol}] Skipped BUY — max stock positions reached")
                 continue
-            investable = _investable_cash(account)
+            investable = _investable_cash(account, confidence=decision.confidence)
             if investable < 1.0:
                 reserve = account["portfolio_value"] * MIN_CASH_RESERVE_PCT
                 logger.info(
-                    f"[{symbol}] Skipped BUY — cash reserve floor reached "
-                    f"(cash=${account['cash']:,.0f}, reserve=${reserve:,.0f})"
+                    f"[{symbol}] Skipped BUY — reserve floor reached and confidence "
+                    f"({decision.confidence}%) below reserve-deploy threshold ({RESERVE_DEPLOY_CONFIDENCE}%)"
                 )
                 continue
             price = technical.current_price or 1.0
@@ -182,12 +200,11 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                 continue
 
             # Check cash reserve floor first
-            investable = _investable_cash(account)
+            investable = _investable_cash(account, confidence=decision.confidence)
             if investable < 1.0:
-                reserve = account["portfolio_value"] * MIN_CASH_RESERVE_PCT
                 logger.info(
-                    f"[{alpaca_sym}] Skipped BUY — cash reserve floor reached "
-                    f"(cash=${account['cash']:,.0f}, reserve=${reserve:,.0f})"
+                    f"[{alpaca_sym}] Skipped BUY — reserve floor reached and confidence "
+                    f"({decision.confidence}%) below reserve-deploy threshold ({RESERVE_DEPLOY_CONFIDENCE}%)"
                 )
                 continue
 

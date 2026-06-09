@@ -33,6 +33,14 @@ CRYPTO_PORTFOLIO_CAP   = 0.35   # max 35% of total portfolio value in crypto
 # consumed. When available-to-invest drops below $1 all BUYs are skipped.
 MIN_CASH_RESERVE_PCT = 0.20   # keep at least 20% of portfolio as cash at all times
 
+# Reserve deployment: the 20% reserve can be partially tapped ONLY when the
+# LLM confidence is >= RESERVE_DEPLOY_CONFIDENCE (signals so strong that sitting
+# in cash has a higher opportunity cost than protecting the floor).
+# At most RESERVE_MAX_DEPLOY_PCT of the reserve is used per trade to avoid
+# committing the entire floor to a single position.
+RESERVE_DEPLOY_CONFIDENCE = 88    # minimum confidence % to tap the reserve
+RESERVE_MAX_DEPLOY_PCT    = 0.50  # deploy at most 50% of the reserve floor per trade
+
 # LLM provider: "groq" (recommended, 14400 free req/day) or "gemini" (1500 free req/day)
 LLM_PROVIDER = "groq"
 
