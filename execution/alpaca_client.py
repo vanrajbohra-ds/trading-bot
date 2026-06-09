@@ -50,12 +50,15 @@ class AlpacaClient:
         positions = {}
         for p in raw:
             symbol = p["symbol"]
+            is_crypto = "/" in symbol  # e.g. BTC/USD — fractional qty, never truncate to int
+            raw_qty = float(p["qty"])
             positions[symbol] = {
-                "qty": int(float(p["qty"])),
+                "qty": raw_qty if is_crypto else int(raw_qty),
                 "avg_entry_price": float(p["avg_entry_price"]),
                 "current_price": float(p.get("current_price") or p["avg_entry_price"]),
                 "market_value": float(p["market_value"]),
                 "unrealized_plpc": float(p.get("unrealized_plpc", 0)),
+                "unrealized_pl": float(p.get("unrealized_pl", 0)),
             }
         return positions
 

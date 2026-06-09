@@ -247,25 +247,60 @@ a5.metric("🔗 Crypto P&L",    f"${crypto_pnl:+,.2f}",
 
 # Allocation pie chart
 total_invested = stock_mkt_value + crypto_mkt_value + cash
-if total_invested > 0:
-    pie_labels = ["Stocks", "Crypto", "Cash"]
-    pie_values = [stock_mkt_value, crypto_mkt_value, cash]
-    pie_colors = ["#00c853", "#7c4dff", "#90caf9"]
-    fig_pie = go.Figure(go.Pie(
-        labels=pie_labels, values=pie_values,
-        marker=dict(colors=pie_colors),
-        hole=0.5,
-        textinfo="label+percent",
-        hovertemplate="%{label}: $%{value:,.2f} (%{percent})<extra></extra>",
-    ))
-    fig_pie.update_layout(
-        margin=dict(l=0, r=0, t=10, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        legend=dict(font=dict(color="white")),
-        height=220,
-        showlegend=True,
-    )
-    st.plotly_chart(fig_pie, use_container_width=True)
+col_pie, col_pie_note = st.columns([2, 3])
+
+with col_pie:
+    if total_invested > 0:
+        # Build slices — only include non-zero values so Plotly renders them
+        pie_data = [
+            ("📈 Stocks",  stock_mkt_value,  "#00c853"),
+            ("🔗 Crypto",  crypto_mkt_value, "#7c4dff"),
+            ("💰 Cash",    cash,             "#90caf9"),
+        ]
+        labels = [d[0] for d in pie_data]
+        values = [d[1] for d in pie_data]
+        colors = [d[2] for d in pie_data]
+
+        fig_pie = go.Figure(go.Pie(
+            labels=labels, values=values,
+            marker=dict(colors=colors),
+            hole=0.5,
+            textinfo="label+percent",
+            textfont=dict(size=12),
+            hovertemplate="%{label}: $%{value:,.2f}<extra></extra>",
+            sort=False,
+        ))
+        fig_pie.update_layout(
+            margin=dict(l=0, r=0, t=10, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            legend=dict(font=dict(color="white"), orientation="h",
+                        yanchor="bottom", y=-0.2),
+            height=260,
+            showlegend=True,
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+with col_pie_note:
+    st.markdown("#### Allocation Breakdown")
+    total = total_invested if total_invested > 0 else 1
+    rows_alloc = [
+        ("📈 Stocks",  stock_mkt_value,  "#00c853"),
+        ("🔗 Crypto",  crypto_mkt_value, "#7c4dff"),
+        ("💰 Cash",    cash,             "#90caf9"),
+    ]
+    for label, val, _ in rows_alloc:
+        pct = val / total * 100
+        bar_filled = int(pct / 2)   # max 50 chars wide
+        bar = "█" * bar_filled + "░" * (50 - bar_filled)
+        st.markdown(
+            f"**{label}** &nbsp; ${val:,.2f} &nbsp; `{pct:.1f}%`  \n"
+            f"<span style='font-size:0.7rem;color:#888;font-family:monospace'>"
+            f"{bar[:30]}</span>",
+            unsafe_allow_html=True,
+        )
+
+    if crypto_mkt_value == 0:
+        st.info("🔗 No crypto positions open yet — bot will allocate once a signal reaches ≥65% confidence.")
 
 st.divider()
 
@@ -338,7 +373,8 @@ with col_pos:
         return rows
 
     def _style_pnl(val):
-        color = "#00c853" if val.startswith("+") else "#ff1744"
+        # P&L values look like "$+47.53" or "+3.20%" — check for "+" anywhere in the string
+        color = "#00c853" if "+" in str(val) else "#ff1744"
         return f"color: {color}"
 
     with tab_stocks:
