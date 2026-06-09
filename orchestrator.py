@@ -15,10 +15,16 @@ from execution.telegram_notifier import TelegramNotifier
 logger = logging.getLogger(__name__)
 
 
+def _reload_positions(positions: dict, alpaca: AlpacaClient) -> None:
+    """Replace positions dict in-place so stale sold/closed positions are removed."""
+    new = alpaca.get_positions()
+    positions.clear()
+    positions.update(new)
+
+
 def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent, decision_agent,
                      account, positions) -> tuple:
     """Analyze and trade stocks. Returns (trades_placed, trades_sold)."""
-    # Stop-loss / take-profit sweep (stock thresholds)
     stock_positions = {s: p for s, p in positions.items() if "/" not in s}
     trades_sold = 0
     for t in risk.check_all_stop_take(stock_positions):
@@ -27,7 +33,10 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             trades_sold += 1
             telegram.risk_exit_alert(t["symbol"], t["qty"], t["reason"])
             account.update(alpaca.get_account())
-            positions.update(alpaca.get_positions())
+            _reload_positions(positions, alpaca)    # clear+update — removes sold positions
+
+    # Rebuild after risk sweep so agent sees fresh state
+    stock_positions = {s: p for s, p in positions.items() if "/" not in s}
 
     trades_placed = 0
     for symbol in WATCHLIST:
@@ -84,7 +93,7 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
         if result["success"]:
             trades_placed += 1
             account.update(alpaca.get_account())
-            positions.update(alpaca.get_positions())
+            _reload_positions(positions, alpaca)    # clear+update
             stock_positions = {s: p for s, p in positions.items() if "/" not in s}
             telegram.trade_alert(
                 symbol, decision.action, qty,
@@ -103,19 +112,20 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
 def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent, decision_agent,
                       account, positions) -> tuple:
     """Analyze and trade crypto. Returns (trades_placed, trades_sold)."""
-    # Stop-loss / take-profit sweep (crypto thresholds — wider)
     crypto_positions = {s: p for s, p in positions.items() if "/" in s}
     trades_sold = 0
     for t in risk.check_all_stop_take(crypto_positions,
                                        stop_loss_pct=CRYPTO_STOP_LOSS_PCT,
                                        take_profit_pct=CRYPTO_TAKE_PROFIT_PCT):
-        # For crypto sells, use qty (fractional shares)
         result = alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])
         if result["success"]:
             trades_sold += 1
             telegram.risk_exit_alert(t["symbol"], t["qty"], t["reason"])
             account.update(alpaca.get_account())
-            positions.update(alpaca.get_positions())
+            _reload_positions(positions, alpaca)    # clear+update — removes sold crypto
+
+    # Rebuild after risk sweep
+    crypto_positions = {s: p for s, p in positions.items() if "/" in s}
 
     trades_placed = 0
     for alpaca_sym in CRYPTO_WATCHLIST:
@@ -125,7 +135,6 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
         try:
             fundamental = fundamental_agent.analyze(alpaca_sym, yf_symbol=yf_sym)
             technical   = technical_agent.analyze(yf_sym, period=HIST_PERIOD)
-            # Keep display symbol consistent
             technical.symbol = alpaca_sym
         except Exception as e:
             telegram.error_alert(f"Data fetch for {alpaca_sym}", str(e))
@@ -152,8 +161,8 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             continue
 
         if decision.action == "BUY":
-            crypto_pos_count = sum(1 for s, p in positions.items() if "/" in s and p["qty"] > 0)
-            if alpaca_sym not in positions and crypto_pos_count >= MAX_CRYPTO_POSITIONS:
+            crypto_pos_count = sum(1 for s, p in crypto_positions.items() if p["qty"] > 0)
+            if alpaca_sym not in crypto_positions and crypto_pos_count >= MAX_CRYPTO_POSITIONS:
                 logger.info(f"[{alpaca_sym}] Skipped BUY — max crypto positions reached")
                 continue
             notional = risk.calculate_notional_size(
@@ -164,21 +173,21 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                 logger.info(f"[{alpaca_sym}] Skipped BUY — insufficient cash")
                 continue
             result = alpaca.submit_crypto_order(alpaca_sym, "BUY", notional)
-            qty_for_alert = notional          # float → notional path in trade_alert
+            qty_for_alert = notional
         elif decision.action == "SELL":
             qty = pos["qty"]
             if qty <= 0:
                 logger.info(f"[{alpaca_sym}] Skipped SELL — no position")
                 continue
             result = alpaca.submit_market_order(alpaca_sym, "SELL", qty)
-            qty_for_alert = qty               # int → shares path in trade_alert
+            qty_for_alert = qty
         else:
             continue
 
         if result["success"]:
             trades_placed += 1
             account.update(alpaca.get_account())
-            positions.update(alpaca.get_positions())
+            _reload_positions(positions, alpaca)    # clear+update
             crypto_positions = {s: p for s, p in positions.items() if "/" in s}
             telegram.trade_alert(
                 alpaca_sym, decision.action, qty_for_alert,
@@ -220,13 +229,11 @@ def run_cycle() -> dict:
         f"Positions: {list(positions.keys())}"
     )
 
-    # Stocks
     s_placed, s_sold = _run_stock_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent, decision_agent,
         account, positions,
     )
 
-    # Crypto
     c_placed, c_sold = _run_crypto_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent, decision_agent,
         account, positions,

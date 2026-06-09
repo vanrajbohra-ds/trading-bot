@@ -183,9 +183,13 @@ class TelegramNotifier:
         if positions:
             msg += "\n<b>Open Positions:</b>\n"
             for sym, p in positions.items():
+                is_crypto = "/" in sym
+                qty = p.get("qty", 0)
+                qty_str = f"{float(qty):.4f}" if is_crypto else str(int(qty))
+                unit = "units" if is_crypto else "shares"
                 pct = p.get("unrealized_plpc", 0) * 100
                 pct_icon = "📈" if pct >= 0 else "📉"
-                msg += f"  {pct_icon} {sym}: {p['qty']} shares ({pct:+.1f}%)\n"
+                msg += f"  {pct_icon} {sym}: {qty_str} {unit} ({pct:+.1f}%)\n"
         else:
             msg += "\nNo open positions."
 
