@@ -82,6 +82,57 @@ def _extract_symbols(quotes: list[dict]) -> list[str]:
     return syms
 
 
+def get_screener_quotes(limit_per_screen: int = 20,
+                        exclude: set | None = None) -> dict:
+    """
+    Return rich quote data for dashboard display.
+
+    Returns:
+      {
+        "actives": [ {symbol, price, change_pct, volume, avg_volume, volume_ratio,
+                      market_cap, name}, ... ],
+        "gainers": [ same structure ],
+      }
+    """
+    exclude = exclude or set()
+
+    def _enrich(quotes: list[dict]) -> list[dict]:
+        out = []
+        for q in quotes:
+            sym = q.get("symbol", "")
+            if not sym or sym in exclude:
+                continue
+            if "." in sym or "^" in sym:
+                continue
+            typ = q.get("quoteType", "").upper()
+            if typ in _SKIP_TYPES:
+                continue
+            price = float(q.get("regularMarketPrice") or 0)
+            if price < _MIN_PRICE:
+                continue
+            avg_vol = float(q.get("averageDailyVolume3Month") or q.get("averageDailyVolume10Day") or 1)
+            vol     = float(q.get("regularMarketVolume") or 0)
+            out.append({
+                "symbol":       sym,
+                "name":         q.get("shortName") or q.get("longName") or sym,
+                "price":        price,
+                "change_pct":   float(q.get("regularMarketChangePercent") or 0),
+                "change_abs":   float(q.get("regularMarketChange") or 0),
+                "volume":       int(vol),
+                "avg_volume":   int(avg_vol),
+                "volume_ratio": round(vol / avg_vol, 2) if avg_vol > 0 else 0,
+                "market_cap":   float(q.get("marketCap") or 0),
+            })
+        return out
+
+    actives_raw = _fetch_screener("most_actives", limit_per_screen)
+    gainers_raw = _fetch_screener("day_gainers",  limit_per_screen)
+    return {
+        "actives": _enrich(actives_raw),
+        "gainers": _enrich(gainers_raw),
+    }
+
+
 def get_momentum_candidates(limit_per_screen: int = 20,
                             exclude: set | None = None) -> list[str]:
     """
