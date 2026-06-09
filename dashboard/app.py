@@ -8,10 +8,14 @@ import requests
 import json
 from datetime import datetime
 import yfinance as yf
+from streamlit_autorefresh import st_autorefresh
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Trading Bot", page_icon="📈",
                    layout="wide", initial_sidebar_state="collapsed")
+
+# Auto-refresh every 30 s — clears cache so API calls re-fire
+_refresh_count = st_autorefresh(interval=30_000, limit=None, key="autorefresh")
 
 st.markdown("""<style>
     .block-container{padding-top:1.5rem!important;padding-bottom:.5rem!important}
@@ -642,6 +646,3 @@ with t_px:
     ps[3].metric("Worst Trade",    f"${worst:+,.0f}")
     ps[4].metric("Avg Win / Loss", f"${avg_w:+,.0f} / ${avg_l:+,.0f}")
 
-# ── Auto-refresh every 30 s ───────────────────────────────────────────────────
-st.markdown('<script>setTimeout(function(){window.location.reload()},30000)</script>',
-            unsafe_allow_html=True)
