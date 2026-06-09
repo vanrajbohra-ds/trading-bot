@@ -28,7 +28,8 @@ MARKET_OPEN_ET  = datetime.time(9, 30)
 MARKET_CLOSE_ET = datetime.time(16, 0)
 CYCLE_INTERVAL  = 60    # seconds between cycles (1 minute, used in --daemon/AWS mode)
 ET_OFFSET       = -4    # EDT (summer). Change to -5 in winter (EST)
-EOD_WINDOW_MIN  = 6     # send daily summary if within this many minutes AFTER close
+EOD_WINDOW_MIN     = 6   # send daily summary if within this many minutes AFTER close
+HEARTBEAT_MINUTE   = 2   # send heartbeat in the first HEARTBEAT_MINUTE mins of every hour
 
 
 def _now_et() -> datetime.datetime:
@@ -57,6 +58,31 @@ def _is_near_close() -> bool:
     close_dt = now.replace(hour=16, minute=0, second=0, microsecond=0)
     mins_after_close = (now - close_dt).total_seconds() / 60
     return 0 <= mins_after_close <= EOD_WINDOW_MIN
+
+
+def _is_top_of_hour() -> bool:
+    """True during the first HEARTBEAT_MINUTE minutes of any hour.
+    With a 2-min cron cadence this fires exactly once per hour."""
+    return _now_et().minute < HEARTBEAT_MINUTE
+
+
+def _send_heartbeat(market_open: bool):
+    from execution.alpaca_client import AlpacaClient
+    from execution.telegram_notifier import TelegramNotifier
+    alpaca   = AlpacaClient()
+    telegram = TelegramNotifier()
+    try:
+        account   = alpaca.get_account()
+        positions = alpaca.get_positions()
+        telegram.heartbeat(
+            portfolio_value=account["portfolio_value"],
+            cash=account["cash"],
+            positions=positions,
+            market_open=market_open,
+        )
+        logger.info("Hourly heartbeat sent to Telegram")
+    except Exception as e:
+        logger.error(f"Failed to send heartbeat: {e}")
 
 
 def _send_daily_summary():
@@ -88,7 +114,9 @@ def run_once():
     logger.info("=== Trading Bot starting cycle ===")
     try:
         from orchestrator import run_cycle
-        run_cycle()
+        from execution.alpaca_client import AlpacaClient
+        result = run_cycle()
+        market_open = AlpacaClient().is_market_open()
     except Exception as e:
         logger.exception(f"Unhandled error in trading cycle: {e}")
         sys.exit(1)
@@ -96,6 +124,11 @@ def run_once():
     if _is_near_close():
         logger.info("Just after market close — sending end-of-day summary")
         _send_daily_summary()
+    elif result["trades_placed"] == 0 and _is_top_of_hour():
+        # No trades this cycle and it's the top of the hour — send a heartbeat
+        # so the user knows the bot is alive even during quiet periods.
+        logger.info("Top of hour with no trades — sending heartbeat")
+        _send_heartbeat(market_open)
 
     logger.info("=== Cycle finished ===")
 

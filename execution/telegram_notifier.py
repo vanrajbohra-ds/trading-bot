@@ -163,6 +163,38 @@ class TelegramNotifier:
         )
         self.send(msg)
 
+    def heartbeat(self, portfolio_value: float, cash: float,
+                  positions: dict, market_open: bool,
+                  cycles_this_hour: int = 0):
+        """Hourly status ping — sent when no trades fired in the past hour."""
+        total_pnl = portfolio_value - 100_000
+        pnl_icon  = "📈" if total_pnl >= 0 else "📉"
+        market_str = "🟢 Stock market OPEN" if market_open else "🔴 Stock market CLOSED"
+
+        msg = (
+            f"🤖 <b>BOT HEARTBEAT</b>  (no trades this hour)\n"
+            f"{'─' * 28}\n"
+            f"{market_str}  ·  🔗 Crypto 24/7\n"
+            f"Portfolio:  ${portfolio_value:,.2f}\n"
+            f"Cash:       ${cash:,.2f}\n"
+            f"Total P&L:  {pnl_icon} ${total_pnl:+,.2f}\n"
+        )
+
+        if positions:
+            msg += "\n<b>Open Positions:</b>\n"
+            for sym, p in positions.items():
+                is_crypto = "/" in sym
+                qty    = p.get("qty", 0)
+                qty_str = f"{float(qty):.4f}" if is_crypto else str(int(qty))
+                unit    = "units" if is_crypto else "shares"
+                pct     = p.get("unrealized_plpc", 0) * 100
+                icon    = "📈" if pct >= 0 else "📉"
+                msg    += f"  {icon} {sym}: {qty_str} {unit} ({pct:+.1f}%)\n"
+        else:
+            msg += "\nNo open positions — scanning for signals.\n"
+
+        self.send(msg)
+
     def daily_summary(self, trades_placed: int, trades_sold: int,
                       pnl_today: float, portfolio_value: float,
                       cash: float, positions: dict):
