@@ -4,6 +4,7 @@ from config import (
     WATCHLIST, MIN_CONFIDENCE, HIST_PERIOD,
     CRYPTO_WATCHLIST, CRYPTO_YFINANCE_MAP,
     MAX_CRYPTO_POSITIONS, CRYPTO_STOP_LOSS_PCT, CRYPTO_TAKE_PROFIT_PCT,
+    CRYPTO_PORTFOLIO_CAP,
 )
 from agents.fundamental_agent import FundamentalAgent
 from agents.technical_agent import TechnicalAgent
@@ -165,12 +166,29 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             if alpaca_sym not in crypto_positions and crypto_pos_count >= MAX_CRYPTO_POSITIONS:
                 logger.info(f"[{alpaca_sym}] Skipped BUY — max crypto positions reached")
                 continue
+
+            # Enforce 35% portfolio cap on total crypto exposure
+            portfolio_value  = account.get("portfolio_value", account["cash"])
+            current_crypto_value = sum(
+                p.get("market_value", 0) for s, p in positions.items() if "/" in s
+            )
+            crypto_cap_budget = portfolio_value * CRYPTO_PORTFOLIO_CAP - current_crypto_value
+            if crypto_cap_budget < 1.0:
+                logger.info(
+                    f"[{alpaca_sym}] Skipped BUY — crypto cap reached "
+                    f"({current_crypto_value/portfolio_value*100:.1f}% / "
+                    f"{CRYPTO_PORTFOLIO_CAP*100:.0f}% of portfolio)"
+                )
+                continue
+
             notional = risk.calculate_notional_size(
                 decision.confidence, account["cash"],
                 buying_power=account.get("buying_power"),
             )
+            # Never exceed remaining cap budget
+            notional = min(notional, crypto_cap_budget)
             if notional < 1.0:
-                logger.info(f"[{alpaca_sym}] Skipped BUY — insufficient cash")
+                logger.info(f"[{alpaca_sym}] Skipped BUY — insufficient cash or cap budget")
                 continue
             result = alpaca.submit_crypto_order(alpaca_sym, "BUY", notional)
             qty_for_alert = notional

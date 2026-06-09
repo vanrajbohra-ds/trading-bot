@@ -25,6 +25,7 @@ CRYPTO_YFINANCE_MAP = {
 MAX_CRYPTO_POSITIONS   = 4
 CRYPTO_STOP_LOSS_PCT   = 0.12   # wider stop — crypto is more volatile
 CRYPTO_TAKE_PROFIT_PCT = 0.25
+CRYPTO_PORTFOLIO_CAP   = 0.35   # max 35% of total portfolio value in crypto
 
 # LLM provider: "groq" (recommended, 14400 free req/day) or "gemini" (1500 free req/day)
 LLM_PROVIDER = "groq"
