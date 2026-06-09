@@ -14,7 +14,7 @@ st.set_page_config(page_title="Trading Bot", page_icon="📈",
                    layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""<style>
-    .block-container{padding-top:.5rem!important;padding-bottom:.5rem!important}
+    .block-container{padding-top:1.5rem!important;padding-bottom:.5rem!important}
     div[data-testid="stMetricValue"]>div{font-size:1.05rem!important}
     div[data-testid="stMetricDelta"]>div{font-size:.68rem!important}
     div[data-testid="stMetricLabel"] p{font-size:.72rem!important;color:#aaa!important}
