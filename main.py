@@ -28,7 +28,7 @@ MARKET_OPEN_ET  = datetime.time(9, 30)
 MARKET_CLOSE_ET = datetime.time(16, 0)
 CYCLE_INTERVAL  = 60    # seconds between cycles (1 minute, used in --daemon/AWS mode)
 ET_OFFSET       = -4    # EDT (summer). Change to -5 in winter (EST)
-EOD_WINDOW_MIN  = 15    # send daily summary if within this many minutes of close
+EOD_WINDOW_MIN  = 6     # send daily summary if within this many minutes AFTER close
 
 
 def _now_et() -> datetime.datetime:
@@ -44,13 +44,19 @@ def _is_market_hours() -> bool:
 
 
 def _is_near_close() -> bool:
-    """True if we're within EOD_WINDOW_MIN minutes before market close."""
+    """True in the EOD_WINDOW_MIN-minute window just after 4 PM ET.
+
+    Fires AFTER close (not before) so GitHub Actions startup latency (~2 min)
+    doesn't cause the summary to miss the window.  With a 6-min window and
+    2-min cron cadence this fires at most 3 times — acceptable; the summary is
+    idempotent and users prefer a duplicate over a missing one.
+    """
     now = _now_et()
     if now.weekday() >= 5:
         return False
     close_dt = now.replace(hour=16, minute=0, second=0, microsecond=0)
-    mins_to_close = (close_dt - now).total_seconds() / 60
-    return 0 <= mins_to_close <= EOD_WINDOW_MIN
+    mins_after_close = (now - close_dt).total_seconds() / 60
+    return 0 <= mins_after_close <= EOD_WINDOW_MIN
 
 
 def _send_daily_summary():
@@ -88,7 +94,7 @@ def run_once():
         sys.exit(1)
 
     if _is_near_close():
-        logger.info("Near market close — sending end-of-day summary")
+        logger.info("Just after market close — sending end-of-day summary")
         _send_daily_summary()
 
     logger.info("=== Cycle finished ===")

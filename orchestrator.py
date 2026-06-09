@@ -212,9 +212,7 @@ def run_cycle() -> dict:
     technical_agent   = TechnicalAgent()
     decision_agent    = DecisionAgent()
 
-    if not alpaca.is_market_open():
-        logger.info("Market is closed — skipping cycle")
-        return {"trades_placed": 0, "trades_sold": 0}
+    stock_market_open = alpaca.is_market_open()
 
     try:
         account   = alpaca.get_account()
@@ -226,14 +224,20 @@ def run_cycle() -> dict:
     logger.info(
         f"Account: cash=${account['cash']:.2f} "
         f"portfolio=${account['portfolio_value']:.2f} | "
-        f"Positions: {list(positions.keys())}"
+        f"Positions: {list(positions.keys())} | "
+        f"Stock market {'OPEN' if stock_market_open else 'CLOSED'}"
     )
 
-    s_placed, s_sold = _run_stock_cycle(
-        alpaca, risk, telegram, fundamental_agent, technical_agent, decision_agent,
-        account, positions,
-    )
+    s_placed = s_sold = 0
+    if stock_market_open:
+        s_placed, s_sold = _run_stock_cycle(
+            alpaca, risk, telegram, fundamental_agent, technical_agent, decision_agent,
+            account, positions,
+        )
+    else:
+        logger.info("Stock market closed — skipping stock cycle (crypto still runs)")
 
+    # Crypto trades 24/7 — always run regardless of stock market hours
     c_placed, c_sold = _run_crypto_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent, decision_agent,
         account, positions,
