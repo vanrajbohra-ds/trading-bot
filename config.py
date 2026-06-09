@@ -27,6 +27,12 @@ CRYPTO_STOP_LOSS_PCT   = 0.12   # wider stop — crypto is more volatile
 CRYPTO_TAKE_PROFIT_PCT = 0.25
 CRYPTO_PORTFOLIO_CAP   = 0.35   # max 35% of total portfolio value in crypto
 
+# ── Cash reserve ──────────────────────────────────────────────────────────────
+# Always keep this fraction of portfolio value as uninvested cash ("dry powder").
+# Position sizing uses (cash - reserve_floor) so the floor is never accidentally
+# consumed. When available-to-invest drops below $1 all BUYs are skipped.
+MIN_CASH_RESERVE_PCT = 0.20   # keep at least 20% of portfolio as cash at all times
+
 # LLM provider: "groq" (recommended, 14400 free req/day) or "gemini" (1500 free req/day)
 LLM_PROVIDER = "groq"
 

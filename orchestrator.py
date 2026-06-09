@@ -4,7 +4,7 @@ from config import (
     WATCHLIST, MIN_CONFIDENCE, HIST_PERIOD,
     CRYPTO_WATCHLIST, CRYPTO_YFINANCE_MAP,
     MAX_CRYPTO_POSITIONS, CRYPTO_STOP_LOSS_PCT, CRYPTO_TAKE_PROFIT_PCT,
-    CRYPTO_PORTFOLIO_CAP,
+    CRYPTO_PORTFOLIO_CAP, MIN_CASH_RESERVE_PCT,
 )
 from agents.fundamental_agent import FundamentalAgent
 from agents.technical_agent import TechnicalAgent
@@ -14,6 +14,12 @@ from execution.risk_manager import RiskManager
 from execution.telegram_notifier import TelegramNotifier
 
 logger = logging.getLogger(__name__)
+
+
+def _investable_cash(account: dict) -> float:
+    """Cash available for new positions after reserving MIN_CASH_RESERVE_PCT of portfolio."""
+    reserve = account["portfolio_value"] * MIN_CASH_RESERVE_PCT
+    return max(0.0, account["cash"] - reserve)
 
 
 def _reload_positions(positions: dict, alpaca: AlpacaClient) -> None:
@@ -74,13 +80,21 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             if not risk.can_open_position(symbol, stock_positions):
                 logger.info(f"[{symbol}] Skipped BUY — max stock positions reached")
                 continue
+            investable = _investable_cash(account)
+            if investable < 1.0:
+                reserve = account["portfolio_value"] * MIN_CASH_RESERVE_PCT
+                logger.info(
+                    f"[{symbol}] Skipped BUY — cash reserve floor reached "
+                    f"(cash=${account['cash']:,.0f}, reserve=${reserve:,.0f})"
+                )
+                continue
             price = technical.current_price or 1.0
             qty   = risk.calculate_position_size(
-                decision.confidence, account["cash"], price,
+                decision.confidence, investable, price,
                 buying_power=account.get("buying_power"),
             )
             if qty <= 0:
-                logger.info(f"[{symbol}] Skipped BUY — insufficient cash/buying power")
+                logger.info(f"[{symbol}] Skipped BUY — insufficient investable cash")
                 continue
         elif decision.action == "SELL":
             qty = pos["qty"]
@@ -167,8 +181,18 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                 logger.info(f"[{alpaca_sym}] Skipped BUY — max crypto positions reached")
                 continue
 
+            # Check cash reserve floor first
+            investable = _investable_cash(account)
+            if investable < 1.0:
+                reserve = account["portfolio_value"] * MIN_CASH_RESERVE_PCT
+                logger.info(
+                    f"[{alpaca_sym}] Skipped BUY — cash reserve floor reached "
+                    f"(cash=${account['cash']:,.0f}, reserve=${reserve:,.0f})"
+                )
+                continue
+
             # Enforce 35% portfolio cap on total crypto exposure
-            portfolio_value  = account.get("portfolio_value", account["cash"])
+            portfolio_value = account["portfolio_value"]
             current_crypto_value = sum(
                 p.get("market_value", 0) for s, p in positions.items() if "/" in s
             )
@@ -182,13 +206,13 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                 continue
 
             notional = risk.calculate_notional_size(
-                decision.confidence, account["cash"],
+                decision.confidence, investable,
                 buying_power=account.get("buying_power"),
             )
             # Never exceed remaining cap budget
             notional = min(notional, crypto_cap_budget)
             if notional < 1.0:
-                logger.info(f"[{alpaca_sym}] Skipped BUY — insufficient cash or cap budget")
+                logger.info(f"[{alpaca_sym}] Skipped BUY — insufficient investable cash or cap budget")
                 continue
             result = alpaca.submit_crypto_order(alpaca_sym, "BUY", notional)
             qty_for_alert = notional
