@@ -1,4 +1,5 @@
 import logging
+import yfinance as yf
 
 from config import (
     WATCHLIST, MIN_CONFIDENCE, HIST_PERIOD,
@@ -21,6 +22,41 @@ from execution.risk_manager import RiskManager
 from execution.telegram_notifier import TelegramNotifier
 
 logger = logging.getLogger(__name__)
+
+STARTING_CAPITAL   = 100_000.0
+DAILY_LOSS_LIMIT   = 0.03   # pause NEW buys if portfolio drops >3% from starting capital
+
+
+# ── Market regime ──────────────────────────────────────────────────────────────
+
+def _is_bull_market() -> bool:
+    """True when SPY is above its 20-day SMA — broad market in uptrend.
+    Gates stock BUY orders. Sells and stop-losses always run regardless."""
+    try:
+        spy   = yf.Ticker("SPY").history(period="1mo", interval="1d")
+        if len(spy) < 20:
+            return True  # not enough data — don't block
+        sma20 = float(spy["Close"].rolling(20).mean().iloc[-1])
+        price = float(spy["Close"].iloc[-1])
+        bull  = price > sma20
+        logger.info(f"[regime] SPY={price:.2f}  SMA20={sma20:.2f}  {'BULL ✓' if bull else 'BEAR — skipping stock BUYs'}")
+        return bull
+    except Exception as e:
+        logger.warning(f"[regime] SPY check failed ({e}) — allowing buys")
+        return True
+
+
+def _ok_to_buy(account: dict) -> bool:
+    """False when portfolio is down >3% from starting capital.
+    Prevents doubling down into a deepening drawdown."""
+    loss_pct = (STARTING_CAPITAL - account["portfolio_value"]) / STARTING_CAPITAL
+    if loss_pct > DAILY_LOSS_LIMIT:
+        logger.warning(
+            f"[circuit-breaker] Portfolio down {loss_pct:.1%} "
+            f"(${account['portfolio_value']:,.0f}) — pausing new BUYs"
+        )
+        return False
+    return True
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -74,7 +110,8 @@ def _is_momentum_signal(technical) -> bool:
 # ── Core stock cycle ───────────────────────────────────────────────────────────
 
 def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
-                     decision_agent, account, positions) -> tuple:
+                     decision_agent, account, positions,
+                     bull_market: bool = True) -> tuple:
     """Core WATCHLIST stocks. Returns (trades_placed, trades_sold)."""
     # Exclude crypto momentum symbols so they're never treated as stocks
     excl = set(MOMENTUM_CRYPTO_UNIVERSE)
@@ -115,6 +152,11 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             continue
 
         if decision.action == "BUY":
+            if not bull_market:
+                logger.info(f"[{symbol}] BUY skipped — SPY below SMA20 (bear regime)")
+                continue
+            if not _ok_to_buy(account):
+                continue
             if not risk.can_open_position(symbol, stock_pos):
                 continue
             investable = _investable_cash(account, decision.confidence)
@@ -240,7 +282,8 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
 # ── Momentum cycle ─────────────────────────────────────────────────────────────
 
 def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
-                        decision_agent, account, positions, stock_market_open: bool = True) -> tuple:
+                        decision_agent, account, positions,
+                        stock_market_open: bool = True, bull_market: bool = True) -> tuple:
     """
     Hunts for momentum across a broad universe of high-beta stocks + volatile crypto.
 
@@ -405,6 +448,13 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
             logger.info(f"[{sym}/momentum] confidence {decision.confidence}% < {MOMENTUM_MIN_CONFIDENCE}%")
             continue
 
+        if not is_crypto and not bull_market:
+            logger.info(f"[{sym}/momentum] BUY skipped — SPY below SMA20 (bear regime)")
+            continue
+
+        if not _ok_to_buy(account):
+            continue
+
         if sym in open_syms:
             logger.info(f"[{sym}/momentum] already holding — skipping BUY")
             continue
@@ -481,6 +531,7 @@ def run_cycle() -> dict:
     decision_agent    = DecisionAgent()
 
     stock_market_open = alpaca.is_market_open()
+    bull_market       = _is_bull_market() if stock_market_open else False
 
     try:
         account   = alpaca.get_account()
@@ -492,7 +543,8 @@ def run_cycle() -> dict:
     logger.info(
         f"Account: cash=${account['cash']:.2f} portfolio=${account['portfolio_value']:.2f} | "
         f"Positions: {list(positions.keys())} | "
-        f"Stock market {'OPEN' if stock_market_open else 'CLOSED'}"
+        f"Stock market {'OPEN' if stock_market_open else 'CLOSED'} | "
+        f"Regime: {'BULL' if bull_market else 'BEAR'}"
     )
 
     s_placed = s_sold = c_placed = c_sold = m_placed = m_sold = 0
@@ -500,19 +552,20 @@ def run_cycle() -> dict:
     if stock_market_open:
         s_placed, s_sold = _run_stock_cycle(
             alpaca, risk, telegram, fundamental_agent, technical_agent,
-            decision_agent, account, positions)
+            decision_agent, account, positions, bull_market=bull_market)
     else:
         logger.info("Stock market closed — skipping core stock cycle")
 
-    # Core crypto: always runs 24/7
+    # Core crypto: always runs 24/7 (no regime filter — crypto has its own cycle)
     c_placed, c_sold = _run_crypto_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent,
         decision_agent, account, positions)
 
-    # Momentum: crypto 24/7, stocks only when market open
+    # Momentum: crypto 24/7, stocks only in bull regime
     m_placed, m_sold = _run_momentum_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent,
-        decision_agent, account, positions, stock_market_open=stock_market_open)
+        decision_agent, account, positions,
+        stock_market_open=stock_market_open, bull_market=bull_market)
 
     total_placed = s_placed + c_placed + m_placed
     total_sold   = s_sold   + c_sold   + m_sold

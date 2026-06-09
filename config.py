@@ -2,7 +2,7 @@ import json as _json, os as _os
 _wl_path = _os.path.join(_os.path.dirname(__file__), "watchlist.json")
 WATCHLIST = _json.load(open(_wl_path)) if _os.path.exists(_wl_path) else ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN"]
 
-MIN_CONFIDENCE = 65
+MIN_CONFIDENCE = 75
 MAX_POSITIONS  = 5
 STOP_LOSS_PCT   = 0.07
 TAKE_PROFIT_PCT = 0.15
@@ -43,7 +43,7 @@ MOMENTUM_SCREENER_LIMIT = 20
 MOMENTUM_TOTAL_BUDGET_PCT  = 0.10   # 10% of portfolio across ALL momentum positions combined
 MAX_MOMENTUM_POSITIONS     = 4      # max simultaneous momentum positions (stocks + crypto)
 
-MOMENTUM_MIN_CONFIDENCE    = 80     # higher bar than core (65%)
+MOMENTUM_MIN_CONFIDENCE    = 82     # higher bar than core (75%)
 MOMENTUM_VOLUME_RATIO_MIN  = 1.8    # 1.8× average volume — confirms a real catalyst
 
 # Tight exits — ride the wave, take profit fast, cut losses faster
