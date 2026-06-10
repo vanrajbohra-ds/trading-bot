@@ -141,6 +141,66 @@ class AlpacaClient:
             logger.warning(f"Could not fetch today's orders: {e}")
             return []
 
+    def get_recent_buy_symbols(self, lookback_minutes: int = 15) -> set:
+        """Return symbols with any non-cancelled buy order in the last N minutes.
+        Guards against duplicate crypto buying when the positions API lags after a fill."""
+        import datetime
+        cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=lookback_minutes)
+        cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            orders = self._get("/orders", params={
+                "status": "all",
+                "after": cutoff_str,
+                "limit": 100,
+                "direction": "asc",
+            })
+            if not isinstance(orders, list):
+                return set()
+            syms = {
+                o["symbol"] for o in orders
+                if o.get("side") == "buy"
+                and o.get("status") not in {"canceled", "expired", "replaced"}
+            }
+            if syms:
+                logger.info(f"[dedup] Recent buys in last {lookback_minutes}min: {syms}")
+            return syms
+        except Exception as e:
+            logger.warning(f"get_recent_buy_symbols failed ({e}) — allowing buys")
+            return set()
+
+    def cancel_stale_open_orders(self, min_age_minutes: int = 5):
+        """Cancel orders stuck in 'new'/'accepted'/'pending_new' for longer than min_age_minutes.
+        Cleans up BTC/USD phantom orders that Alpaca accepts but never fills."""
+        import datetime
+        try:
+            orders = self._get("/orders", params={"status": "open", "limit": 100})
+            if not isinstance(orders, list):
+                return
+            now = datetime.datetime.utcnow()
+            cancelled = 0
+            for o in orders:
+                if o.get("status") not in {"new", "accepted", "pending_new"}:
+                    continue
+                try:
+                    created = datetime.datetime.fromisoformat(
+                        o["created_at"].replace("Z", "+00:00")
+                    ).replace(tzinfo=None)
+                    age_min = (now - created).total_seconds() / 60
+                except Exception:
+                    continue
+                if age_min >= min_age_minutes:
+                    r = self._delete(f"/orders/{o['id']}")
+                    if r.ok:
+                        logger.info(
+                            f"[cleanup] Cancelled stuck {o['side'].upper()} {o['symbol']} "
+                            f"(status={o['status']}, age={age_min:.0f}min)"
+                        )
+                        cancelled += 1
+            if cancelled:
+                logger.info(f"[cleanup] Removed {cancelled} stale open orders total")
+        except Exception as e:
+            logger.warning(f"cancel_stale_open_orders failed ({e})")
+
     def get_daily_pnl(self) -> float:
         """Return today's P&L from portfolio history."""
         try:

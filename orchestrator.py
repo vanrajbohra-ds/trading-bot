@@ -168,7 +168,9 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                                                buying_power=account.get("buying_power"))
             if qty <= 0: continue
         elif decision.action == "SELL":
-            qty = pos["qty"]
+            # Re-read from live positions (not stale snapshot) to prevent accidental shorts
+            # when stop/take already sold this symbol and positions haven't been reloaded yet.
+            qty = positions.get(symbol, {}).get("qty", 0)
             if qty <= 0: continue
         else:
             continue
@@ -192,7 +194,8 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
 # ── Core crypto cycle ──────────────────────────────────────────────────────────
 
 def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
-                      decision_agent, account, positions) -> tuple:
+                      decision_agent, account, positions,
+                      recently_bought: set = None) -> tuple:
     """Core crypto (BTC, SOL). Returns (trades_placed, trades_sold)."""
     excl = set(MOMENTUM_CRYPTO_UNIVERSE)
     core_crypto = {s: p for s, p in positions.items() if "/" in s and s not in excl}
@@ -236,6 +239,11 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             continue
 
         if decision.action == "BUY":
+            # Dedup guard: Alpaca positions API lags 2-3min after a crypto fill.
+            # Check orders history so we never re-buy a symbol we just bought.
+            if recently_bought and alpaca_sym in recently_bought:
+                logger.info(f"[{alpaca_sym}] BUY skipped — recent buy order exists (dedup)")
+                continue
             core_count = sum(1 for s, p in core_crypto.items() if p["qty"] > 0)
             if alpaca_sym not in core_crypto and core_count >= MAX_CRYPTO_POSITIONS:
                 continue
@@ -253,7 +261,7 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                                              buying_power=account.get("buying_power")),
                 cap_budget,
             )
-            if notional < 1.0: continue
+            if notional < 10.0: continue
             result = alpaca.submit_crypto_order(alpaca_sym, "BUY", notional)
             qty_for_alert = notional
         elif decision.action == "SELL":
@@ -283,7 +291,8 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
 
 def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                         decision_agent, account, positions,
-                        stock_market_open: bool = True, bull_market: bool = True) -> tuple:
+                        stock_market_open: bool = True, bull_market: bool = True,
+                        recently_bought: set = None) -> tuple:
     """
     Hunts for momentum across a broad universe of high-beta stocks + volatile crypto.
 
@@ -448,6 +457,11 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
             logger.info(f"[{sym}/momentum] confidence {decision.confidence}% < {MOMENTUM_MIN_CONFIDENCE}%")
             continue
 
+        # Dedup guard: positions API lags for crypto — check order history instead
+        if recently_bought and sym in recently_bought:
+            logger.info(f"[{sym}/momentum] BUY skipped — recent buy order exists (dedup)")
+            continue
+
         if not is_crypto and not bull_market:
             logger.info(f"[{sym}/momentum] BUY skipped — SPY below SMA20 (bear regime)")
             continue
@@ -488,7 +502,7 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
         if is_crypto:
             notional = risk.calculate_notional_size(decision.confidence, budget_to_use,
                                                      buying_power=account.get("buying_power"))
-            if notional < 1.0: continue
+            if notional < 10.0: continue
             result = alpaca.submit_crypto_order(sym, "BUY", notional)
             qty_for_alert = notional
         else:
@@ -540,6 +554,15 @@ def run_cycle() -> dict:
         telegram.error_alert("Fetching account/positions", str(e))
         raise
 
+    # Cancel any zombie orders stuck in 'new'/'accepted' status for >5 minutes.
+    # This cleans up BTC/USD phantom orders that Alpaca accepts but never fills.
+    alpaca.cancel_stale_open_orders(min_age_minutes=5)
+
+    # Fetch recent buy history ONCE per cycle.
+    # Used across all sub-cycles to prevent re-buying crypto when Alpaca positions
+    # API hasn't caught up yet (typically 2-3 min lag after a crypto fill).
+    recently_bought = alpaca.get_recent_buy_symbols(lookback_minutes=15)
+
     logger.info(
         f"Account: cash=${account['cash']:.2f} portfolio=${account['portfolio_value']:.2f} | "
         f"Positions: {list(positions.keys())} | "
@@ -559,13 +582,15 @@ def run_cycle() -> dict:
     # Core crypto: always runs 24/7 (no regime filter — crypto has its own cycle)
     c_placed, c_sold = _run_crypto_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent,
-        decision_agent, account, positions)
+        decision_agent, account, positions,
+        recently_bought=recently_bought)
 
     # Momentum: crypto 24/7, stocks only in bull regime
     m_placed, m_sold = _run_momentum_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent,
         decision_agent, account, positions,
-        stock_market_open=stock_market_open, bull_market=bull_market)
+        stock_market_open=stock_market_open, bull_market=bull_market,
+        recently_bought=recently_bought)
 
     total_placed = s_placed + c_placed + m_placed
     total_sold   = s_sold   + c_sold   + m_sold
