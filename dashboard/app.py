@@ -711,13 +711,15 @@ with t_rep:
     st.divider()
 
     # ── Filters ────────────────────────────────────────────────────────────
-    fc1, fc2, fc3 = st.columns(3)
+    fc1, fc2, fc3, fc4 = st.columns(4)
     rep_view  = fc1.radio("View",  ["📅 By Day", "📋 All Trades"], horizontal=True,
                           label_visibility="collapsed")
     rep_side  = fc2.radio("Side",  ["All", "BUY only", "SELL only"], horizontal=True,
                           label_visibility="collapsed")
     rep_range = fc3.radio("Range", ["All time", "Last 7 days", "Today"], horizontal=True,
                           label_visibility="collapsed")
+    rep_type  = fc4.radio("Type",  ["All", "📈 Stocks", "🔗 Crypto", "🚀 Momentum"],
+                          horizontal=True, label_visibility="collapsed")
 
     # Apply filters
     _now_utc = datetime.now(timezone.utc)
@@ -740,6 +742,13 @@ with t_rep:
         _cutoff = _now_utc - timedelta(days=7)
         _filtered = [o for o in _filtered
                      if (_pdt(o.get("filled_at", "")) or _now_utc) >= _cutoff]
+
+    if rep_type == "📈 Stocks":
+        _filtered = [o for o in _filtered if "/" not in o.get("symbol", "")]
+    elif rep_type == "🔗 Crypto":
+        _filtered = [o for o in _filtered if "/" in o.get("symbol", "")]
+    elif rep_type == "🚀 Momentum":
+        _filtered = [o for o in _filtered if o.get("symbol", "") not in _CORE_SYMS]
 
     # ── Shared row builder ────────────────────────────────────────────────
     def _rep_row(o, include_date=True):
