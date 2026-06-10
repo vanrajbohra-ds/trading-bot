@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import yfinance as yf
 from streamlit_autorefresh import st_autorefresh
 
@@ -89,6 +89,19 @@ def get_portfolio_history():
     r = requests.get(f"{BASE}/account/portfolio/history", headers=HEADERS,
                      params={"period": "1M", "timeframe": "1D", "extended_hours": False}, timeout=10)
     return r.json() if r.ok else {}
+
+@st.cache_data(ttl=60)
+def get_orders_report():
+    """Fetch up to 500 filled orders for the Reports tab."""
+    r = requests.get(f"{BASE}/orders", headers=HEADERS,
+                     params={"status": "filled", "limit": 500, "direction": "desc"}, timeout=15)
+    if not r.ok:
+        return []
+    raw = r.json()
+    for o in (raw if isinstance(raw, list) else []):
+        if isinstance(o, dict):
+            o["symbol"] = _CRYPTO_NORM.get(o["symbol"], o["symbol"])
+    return raw if isinstance(raw, list) else []
 
 @st.cache_data(ttl=60)
 def get_watchlist():
@@ -244,8 +257,8 @@ k[7].metric("Momentum Used", f"${mom_val_used:,.0f}", f"of ${mom_budget:,.0f}")
 st.divider()
 
 # ── Main tabs ─────────────────────────────────────────────────────────────────
-t_ov, t_pos, t_mom, t_hist, t_px = st.tabs(
-    ["📊 Overview", "💼 Positions", "🚀 Momentum", "📜 History", "📡 Prices"]
+t_ov, t_pos, t_mom, t_hist, t_rep, t_px = st.tabs(
+    ["📊 Overview", "💼 Positions", "🚀 Momentum", "📜 History", "📋 Reports", "📡 Prices"]
 )
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -652,6 +665,150 @@ with t_hist:
                      use_container_width=True, hide_index=True, height=420)
     else:
         st.info("No trade history yet.")
+
+# ════════════════════════════════════════════════════════════════════════════════
+# REPORTS
+# ════════════════════════════════════════════════════════════════════════════════
+with t_rep:
+    rep_all = get_orders_report()
+
+    # ── Realized P&L: match sells to prior buys per symbol (chronological) ───
+    _buy_history = {}   # sym -> [(qty, price), ...]
+    _sell_pnls   = {}   # order_id -> float
+    for _o in sorted(rep_all, key=lambda x: x.get("filled_at", "")):
+        _sym = _o.get("symbol", ""); _id = _o.get("id", "")
+        _qty = float(_o.get("filled_qty", 0))
+        _px  = float(_o.get("filled_avg_price") or 0)
+        if _o.get("side") == "buy":
+            _buy_history.setdefault(_sym, []).append((_qty, _px))
+        elif _o.get("side") == "sell" and _buy_history.get(_sym):
+            _buys = _buy_history[_sym]
+            _tq   = sum(b[0] for b in _buys)
+            _ap   = sum(b[0] * b[1] for b in _buys) / _tq if _tq else _px
+            _sell_pnls[_id] = (_px - _ap) * _qty
+
+    # ── Summary KPIs ─────────────────────────────────────────────────────────
+    def _oval(o):
+        return float(o.get("filled_qty", 0)) * float(o.get("filled_avg_price") or 0)
+
+    _r_buys    = [o for o in rep_all if o.get("side") == "buy"]
+    _r_sells   = [o for o in rep_all if o.get("side") == "sell"]
+    _buy_vol   = sum(_oval(o) for o in _r_buys)
+    _sell_vol  = sum(_oval(o) for o in _r_sells)
+    _rpnl      = sum(_sell_pnls.values())
+    _win_t     = sum(1 for v in _sell_pnls.values() if v > 0)
+    _loss_t    = sum(1 for v in _sell_pnls.values() if v <= 0)
+
+    rm = st.columns(6)
+    rm[0].metric("Total Buys",   len(_r_buys))
+    rm[1].metric("Total Sells",  len(_r_sells))
+    rm[2].metric("Vol Bought",   f"${_buy_vol:,.0f}")
+    rm[3].metric("Vol Sold",     f"${_sell_vol:,.0f}")
+    rm[4].metric("Realized P&L", f"${_rpnl:+,.2f}",
+                 delta_color="normal" if _rpnl >= 0 else "inverse")
+    rm[5].metric("Closed Trades",f"{_win_t}W / {_loss_t}L")
+
+    st.divider()
+
+    # ── Filters ────────────────────────────────────────────────────────────
+    fc1, fc2, fc3 = st.columns(3)
+    rep_view  = fc1.radio("View",  ["📅 By Day", "📋 All Trades"], horizontal=True,
+                          label_visibility="collapsed")
+    rep_side  = fc2.radio("Side",  ["All", "BUY only", "SELL only"], horizontal=True,
+                          label_visibility="collapsed")
+    rep_range = fc3.radio("Range", ["All time", "Last 7 days", "Today"], horizontal=True,
+                          label_visibility="collapsed")
+
+    # Apply filters
+    _now_utc = datetime.now(timezone.utc)
+
+    def _pdt(fa):
+        try:    return datetime.fromisoformat(fa.replace("Z", "+00:00"))
+        except: return None
+
+    _filtered = list(rep_all)
+    if rep_side == "BUY only":
+        _filtered = [o for o in _filtered if o.get("side") == "buy"]
+    elif rep_side == "SELL only":
+        _filtered = [o for o in _filtered if o.get("side") == "sell"]
+
+    if rep_range == "Today":
+        _td = _now_utc.date()
+        _filtered = [o for o in _filtered
+                     if (_pdt(o.get("filled_at", "")) or _now_utc).date() == _td]
+    elif rep_range == "Last 7 days":
+        _cutoff = _now_utc - timedelta(days=7)
+        _filtered = [o for o in _filtered
+                     if (_pdt(o.get("filled_at", "")) or _now_utc) >= _cutoff]
+
+    # ── Shared row builder ────────────────────────────────────────────────
+    def _rep_row(o, include_date=True):
+        dt   = _pdt(o.get("filled_at", ""))
+        sym  = o.get("symbol", ""); is_c = "/" in sym
+        qty  = float(o.get("filled_qty", 0))
+        px   = float(o.get("filled_avg_price") or 0)
+        side = o.get("side", "").upper()
+        pnl  = _sell_pnls.get(o.get("id", ""), None)
+        row  = {}
+        if include_date:
+            row["Date"] = dt.strftime("%b %d") if dt else "—"
+        row["Time"]   = dt.strftime("%H:%M UTC") if dt else "—"
+        row["Symbol"] = sym
+        row["Type"]   = "🔗" if is_c else "📈"
+        row["Side"]   = side
+        row["Units"]  = f"{qty:.4f}" if is_c else str(int(qty))
+        row["Price"]  = f"${px:.4f}" if is_c else f"${px:.2f}"
+        row["Value"]  = f"${qty * px:,.2f}"
+        row["P&L"]    = f"${pnl:+,.2f}" if pnl is not None else "—"
+        return row
+
+    def _style_rep(df):
+        def _cs(v): return "color:#00c853" if v == "BUY" else "color:#ff1744"
+        def _cp(v):
+            sv = str(v)
+            if "$+" in sv: return "color:#00c853"
+            if "$-" in sv: return "color:#ff1744"
+            return ""
+        return df.style.map(_cs, subset=["Side"]).map(_cp, subset=["P&L"])
+
+    if not _filtered:
+        st.info("No trades match the current filter.")
+
+    elif rep_view == "📅 By Day":
+        # Group by calendar date (API returns desc order already)
+        _day_groups = {}
+        for _o in _filtered:
+            _dt  = _pdt(_o.get("filled_at", ""))
+            _key = _dt.strftime("%A, %b %d %Y") if _dt else "Unknown"
+            _day_groups.setdefault(_key, []).append(_o)
+
+        for _day_str, _day_orders in _day_groups.items():
+            _nb  = sum(1 for o in _day_orders if o.get("side") == "buy")
+            _ns  = sum(1 for o in _day_orders if o.get("side") == "sell")
+            _dbv = sum(_oval(o) for o in _day_orders if o.get("side") == "buy")
+            _dsv = sum(_oval(o) for o in _day_orders if o.get("side") == "sell")
+            _dpnl = sum(_sell_pnls.get(o.get("id", ""), 0)
+                        for o in _day_orders if o.get("side") == "sell")
+            _pnl_tag = f"P&L ${_dpnl:+,.2f}" if _ns > 0 else ""
+
+            with st.expander(
+                f"**{_day_str}** — "
+                f"🟢 {_nb} buy{'s' if _nb != 1 else ''}  "
+                f"🔴 {_ns} sell{'s' if _ns != 1 else ''}  |  "
+                f"${_dbv:,.0f} bought  ·  ${_dsv:,.0f} sold"
+                + (f"  |  {_pnl_tag}" if _pnl_tag else ""),
+                expanded=(_day_str == next(iter(_day_groups))),
+            ):
+                _rows = [_rep_row(o, include_date=False) for o in _day_orders]
+                st.dataframe(_style_rep(pd.DataFrame(_rows)),
+                             use_container_width=True, hide_index=True)
+
+    else:  # 📋 All Trades
+        _rows = [_rep_row(o) for o in _filtered]
+        if _rows:
+            st.dataframe(_style_rep(pd.DataFrame(_rows)),
+                         use_container_width=True, hide_index=True, height=480)
+
 
 # ════════════════════════════════════════════════════════════════════════════════
 # PRICES
