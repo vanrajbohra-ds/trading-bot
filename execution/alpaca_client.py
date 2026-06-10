@@ -169,8 +169,9 @@ class AlpacaClient:
             return set()
 
     def cancel_stale_open_orders(self, min_age_minutes: int = 5):
-        """Cancel orders stuck in 'new'/'accepted'/'pending_new' for longer than min_age_minutes.
-        Cleans up BTC/USD phantom orders that Alpaca accepts but never fills."""
+        """Cancel GTC orders stuck in 'new'/'accepted'/'pending_new' for longer than min_age_minutes.
+        Only targets 'gtc' time_in_force — crypto phantom orders that Alpaca accepts but never fills.
+        Skips 'day' orders (stocks waiting for market open) which have a natural expiry."""
         import datetime
         try:
             orders = self._get("/orders", params={"status": "open", "limit": 100})
@@ -180,6 +181,9 @@ class AlpacaClient:
             cancelled = 0
             for o in orders:
                 if o.get("status") not in {"new", "accepted", "pending_new"}:
+                    continue
+                # Only cancel GTC orders — 'day' orders are waiting for market open, leave them alone
+                if o.get("time_in_force", "") != "gtc":
                     continue
                 try:
                     created = datetime.datetime.fromisoformat(
@@ -193,11 +197,11 @@ class AlpacaClient:
                     if r.ok:
                         logger.info(
                             f"[cleanup] Cancelled stuck {o['side'].upper()} {o['symbol']} "
-                            f"(status={o['status']}, age={age_min:.0f}min)"
+                            f"(status={o['status']}, age={age_min:.0f}min, tif=gtc)"
                         )
                         cancelled += 1
             if cancelled:
-                logger.info(f"[cleanup] Removed {cancelled} stale open orders total")
+                logger.info(f"[cleanup] Removed {cancelled} stale GTC orders total")
         except Exception as e:
             logger.warning(f"cancel_stale_open_orders failed ({e})")
 
