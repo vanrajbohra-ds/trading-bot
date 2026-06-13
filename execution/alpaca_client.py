@@ -113,16 +113,18 @@ class AlpacaClient:
             logger.error(f"Crypto order failed: {side.upper()} ${notional:.2f} {symbol} | {r.status_code} {r.text}")
             return {"success": False, "error": r.text, "status_code": r.status_code}
 
-    def submit_market_order(self, symbol: str, side: str, qty: int) -> dict:
+    def submit_market_order(self, symbol: str, side: str, qty) -> dict:
         side = side.lower()
         self.cancel_all_orders_for(symbol)  # always cancel pending orders first (prevents duplicate/blocking orders)
 
+        # Crypto only accepts gtc/ioc/fok — "day" is stocks-only and causes 422 errors
+        tif = "gtc" if "/" in symbol else "day"
         body = {
             "symbol": symbol,
             "qty": str(qty),
             "side": side,
             "type": "market",
-            "time_in_force": "day",
+            "time_in_force": tif,
         }
         r = self._post("/orders", body)
         if r.status_code in (200, 201):

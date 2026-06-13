@@ -8,6 +8,8 @@ on:
 jobs:
   trade:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -16,7 +18,7 @@ jobs:
           python-version: '3.11'
 
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements-bot.txt') }}

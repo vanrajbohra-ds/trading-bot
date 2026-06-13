@@ -9,6 +9,26 @@ import yfinance as yf
 # FinBERT via HuggingFace Inference API — free, no GPU needed
 _HF_FINBERT_URL = "https://api-inference.huggingface.co/models/ProsusAI/finbert"
 
+# CoinGecko ID for each Alpaca crypto symbol — used for community sentiment fallback
+_COINGECKO_ID_MAP = {
+    "BTC/USD":  "bitcoin",
+    "ETH/USD":  "ethereum",
+    "SOL/USD":  "solana",
+    "DOGE/USD": "dogecoin",
+    "AVAX/USD": "avalanche-2",
+    "LTC/USD":  "litecoin",
+    "BCH/USD":  "bitcoin-cash",
+    "LINK/USD": "chainlink",
+    "UNI/USD":  "uniswap",
+    "AAVE/USD": "aave",
+    "GRT/USD":  "the-graph",
+    "MKR/USD":  "maker",
+    "XLM/USD":  "stellar",
+    "XTZ/USD":  "tezos",
+    "BAT/USD":  "basic-attention-token",
+    "SHIB/USD": "shiba-inu",
+}
+
 _BULLISH_TERMS = {
     "upgrade", "beat", "beats", "exceeds", "record", "strong", "growth",
     "surge", "bullish", "profit", "gains", "soars", "raised", "outperform",
@@ -203,6 +223,40 @@ class FundamentalAgent:
         except Exception:
             return None
 
+    def _fetch_crypto_sentiment_coingecko(self, alpaca_symbol: str) -> tuple:
+        """Community sentiment from CoinGecko as proxy for news sentiment.
+        Uses sentiment_votes_up/down_percentage from the free /coins/{id} endpoint.
+        Returns (score -1.0 to +1.0, label) or (None, None) on any failure."""
+        cg_id = _COINGECKO_ID_MAP.get(alpaca_symbol)
+        if not cg_id:
+            return None, None
+        try:
+            r = requests.get(
+                f"https://api.coingecko.com/api/v3/coins/{cg_id}",
+                params={
+                    "localization": "false",
+                    "tickers": "false",
+                    "market_data": "false",
+                    "community_data": "true",
+                    "developer_data": "false",
+                    "sparkline": "false",
+                },
+                headers={"User-Agent": "trading-bot/1.0"},
+                timeout=10,
+            )
+            if not r.ok:
+                return None, None
+            cd = r.json().get("community_data") or {}
+            up_pct = cd.get("sentiment_votes_up_percentage")
+            if up_pct is None:
+                return None, None
+            down_pct = cd.get("sentiment_votes_down_percentage") or (100.0 - up_pct)
+            score = round((up_pct - down_pct) / 100.0, 3)
+            label = "BULLISH" if up_pct > 60 else ("BEARISH" if up_pct < 40 else "NEUTRAL")
+            return score, label
+        except Exception:
+            return None, None
+
     def _get_put_call_ratio(self, ticker) -> Optional[float]:
         """Compute put/call volume ratio from nearest expiry options chain.
         >1.3 = bearish hedging, <0.7 = bullish positioning."""
@@ -345,6 +399,11 @@ class FundamentalAgent:
 
             news = self._fetch_news(ticker)
             sentiment_score, sentiment_label = self._score_news_sentiment(news)
+
+            # yfinance rarely returns news for crypto tickers — fall back to
+            # CoinGecko community sentiment votes (free, no API key required)
+            if sentiment_score is None:
+                sentiment_score, sentiment_label = self._fetch_crypto_sentiment_coingecko(symbol)
 
             return FundamentalReport(
                 symbol=symbol,
