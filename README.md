@@ -232,11 +232,16 @@ trading_bot/
 │
 ├── agents/
 │   ├── fundamental_agent.py  # yfinance: fundamentals + news headlines + insider transactions
+│   │                         # Stocks: FinBERT sentiment via HuggingFace API (keyword fallback)
+│   │                         # Crypto: CoinGecko community sentiment votes (no API key needed)
 │   ├── technical_agent.py    # RSI, MACD, Bollinger Bands, SMA50/200, OBV via ta library
 │   └── decision_agent.py     # 4-provider LLM failover + mandatory bull/bear debate
+│                             #   Missing-key errors skip provider (don't abort the chain)
 │
 ├── execution/
 │   ├── alpaca_client.py      # Alpaca Paper Trading REST wrapper
+│   │                         #   submit_market_order()       auto-uses gtc for crypto (/ in sym),
+│   │                         #                               day for stocks — Alpaca rejects day on crypto
 │   │                         #   get_recent_buy_symbols()    dedup guard (15 min / 90 min)
 │   │                         #   cancel_stale_open_orders()  kills stuck GTC crypto orders
 │   ├── risk_manager.py       # Stop-loss, take-profit, position sizing, cash reserve
@@ -325,6 +330,8 @@ Portfolio: $100,234.50  ·  Cash: $68,120.30
 ### GitHub Actions + cron-job.org (current — free)
 
 [cron-job.org](https://cron-job.org) fires a `workflow_dispatch` POST every 2 minutes. GitHub Actions runs the cycle and exits.
+
+The workflow sets `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` to run all actions on Node.js 24 (required after June 2026 — GitHub dropped Node.js 20).
 
 **cron-job.org setup:**
 - URL: `https://api.github.com/repos/{owner}/{repo}/actions/workflows/trading_bot.yml/dispatches`
@@ -416,6 +423,9 @@ GROQ_API_KEY=...          # console.groq.com    — 14,400 req/day free
 GOOGLE_API_KEY=...        # aistudio.google.com — 1,500 req/day free
 OPENROUTER_API_KEY=...    # openrouter.ai       — free tier, last resort
 
+# FinBERT sentiment (stock news) — huggingface.co/settings/tokens
+HUGGINGFACE_API_TOKEN=... # ProsusAI/finbert via Inference API; falls back to keyword scoring if unset
+
 # Telegram
 TELEGRAM_BOT_TOKEN=...    # from @BotFather
 TELEGRAM_CHAT_ID=...      # from api.telegram.org/bot{token}/getUpdates
@@ -438,6 +448,16 @@ pip install -r requirements-bot.txt   # for running the bot locally
 
 ---
 
+## Bug Fixes Log
+
+| Fix | Symptom | Root Cause | Commit |
+|---|---|---|---|
+| Crypto SELL `time_in_force` | `❌ BOT ERROR: Order SELL AVAX/USD — invalid crypto time_in_force` on every crypto stop-loss and LLM SELL | `submit_market_order` hardcoded `"day"` which Alpaca rejects for crypto (only accepts `gtc`/`ioc`/`fok`). All crypto exits were silently failing. | `fc935a4` |
+| LLM failover missing-key skip | All crypto decisions returned `HOLD 0%` when `CEREBRAS_API_KEY` was not in GitHub Secrets | `RuntimeError("CEREBRAS_API_KEY not set")` was re-raised immediately instead of falling through to Groq. Fixed by adding `_is_missing_key_error()` check. | `7d25b49` |
+| Crypto sentiment always `N/A` | `Sentiment=N/A` in every crypto LLM signal log — LLM had no sentiment signal for crypto | yfinance does not return news headlines for crypto tickers (`ETH-USD` etc.). Fixed by falling back to CoinGecko community sentiment votes. | `fc935a4` |
+
+---
+
 ## Inspiration & References
 
 This bot was designed by studying the architectures and research behind several leading open-source trading AI projects. Key learnings from each:
@@ -455,7 +475,7 @@ This bot was designed by studying the architectures and research behind several 
 |---|---|
 | [Yahoo Finance (yfinance)](https://github.com/ranaroussi/yfinance) | Stock + crypto prices, fundamentals (P/E, EPS, growth, analyst ratings), news headlines, insider transactions, technical history |
 | [Yahoo Finance Screeners](https://finance.yahoo.com/screener) | Momentum stock discovery — `most_actives` and `day_gainers` screeners surface what's actually moving each cycle |
-| [CoinGecko API](https://www.coingecko.com/en/api) | Momentum crypto discovery — top 100 coins by 24h volume, scored by price change × volume/market-cap ratio |
+| [CoinGecko API](https://www.coingecko.com/en/api) | Momentum crypto discovery — top 100 coins by 24h volume, scored by price change × volume/market-cap ratio. Also provides community sentiment votes (`sentiment_votes_up_percentage`) used as LLM signal for all 16 crypto pairs when yfinance returns no news. |
 | [Alpaca Paper Trading API](https://alpaca.markets) | Order execution, position tracking, account state, portfolio history |
 | [SPY via yfinance](https://finance.yahoo.com/quote/SPY) | Market regime detection — BULL when SPY > SMA20, BEAR when below |
 
