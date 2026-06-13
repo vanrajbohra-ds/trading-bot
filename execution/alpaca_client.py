@@ -192,6 +192,30 @@ class AlpacaClient:
             logger.warning(f"get_recent_buy_symbols failed ({e}) — allowing buys")
             return set()
 
+    def get_recent_sell_symbols(self, lookback_minutes: int = 30) -> set:
+        """Return symbols with a filled SELL in the last lookback_minutes.
+        Used to block immediate re-buying of an asset we just exited."""
+        import datetime
+        now    = datetime.datetime.utcnow()
+        cutoff = (now - datetime.timedelta(minutes=lookback_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            orders = self._get("/orders", params={
+                "status": "filled",
+                "after":  cutoff,
+                "limit":  100,
+                "direction": "desc",
+            })
+            if not isinstance(orders, list):
+                return set()
+            sold = {o.get("symbol", "") for o in orders
+                    if o.get("side") in {"sell", "sell_short"} and o.get("symbol")}
+            if sold:
+                logger.info(f"[cooldown] Recently sold (last {lookback_minutes}min): {sold}")
+            return sold
+        except Exception as e:
+            logger.warning(f"get_recent_sell_symbols failed ({e}) — allowing buys")
+            return set()
+
     def cancel_stale_open_orders(self, min_age_minutes: int = 5):
         """Cancel GTC orders stuck in 'new'/'accepted'/'pending_new' for longer than min_age_minutes.
         Only targets 'gtc' time_in_force — crypto phantom orders that Alpaca accepts but never fills.

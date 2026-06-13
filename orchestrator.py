@@ -172,6 +172,7 @@ def _is_momentum_signal(technical) -> bool:
 def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                      decision_agent, account, positions,
                      bull_market: bool = True,
+                     recently_sold: set = None,
                      macro_context: str = "") -> tuple:
     """Core WATCHLIST stocks. Returns (trades_placed, trades_sold)."""
     stock_pos = {s: p for s, p in positions.items() if "/" not in s}
@@ -218,6 +219,9 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             if not bull_market:
                 logger.info(f"[{symbol}] BUY skipped — SPY below SMA20 (bear regime)")
                 continue
+            if recently_sold and symbol in recently_sold:
+                logger.info(f"[{symbol}] BUY skipped — sold in last 30 min (cooldown)")
+                continue
             if not _ok_to_buy(account):
                 continue
             if not risk.can_open_position(symbol, stock_pos):
@@ -260,6 +264,8 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
 def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                       decision_agent, account, positions,
                       recently_bought: set = None,
+                      recently_sold: set = None,
+                      bull_market: bool = True,
                       macro_context: str = "") -> tuple:
     """Core crypto (ETH, SOL, DOGE, AVAX). Returns (trades_placed, trades_sold)."""
     core_set    = set(CRYPTO_WATCHLIST)
@@ -313,6 +319,16 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             if recently_bought and alpaca_sym in recently_bought:
                 logger.info(f"[{alpaca_sym}] BUY skipped — recent buy order exists (dedup)")
                 continue
+            # Cooldown guard: don't re-buy within 30 min of selling the same symbol.
+            # Prevents the RSI-oversold vs MACD-bearish flip-flop pattern.
+            if recently_sold and alpaca_sym in recently_sold:
+                logger.info(f"[{alpaca_sym}] BUY skipped — sold in last 30 min (cooldown)")
+                continue
+            # In a BEAR stock-market regime, require higher conviction for crypto BUYs.
+            # Weak oversold signals (70-84%) are unreliable when broader risk is off.
+            if not bull_market and decision.confidence < 85:
+                logger.info(f"[{alpaca_sym}] BUY skipped — BEAR regime + confidence {decision.confidence}% < 85%")
+                continue
             core_count = sum(1 for s, p in core_crypto.items() if p["qty"] > 0)
             if alpaca_sym not in core_crypto and core_count >= MAX_CRYPTO_POSITIONS:
                 continue
@@ -363,6 +379,7 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
                         decision_agent, account, positions,
                         stock_market_open: bool = True, bull_market: bool = True,
                         recently_bought: set = None,
+                        recently_sold: set = None,
                         macro_context: str = "") -> tuple:
     """
     Hunts for momentum across a broad universe of high-beta stocks + volatile crypto.
@@ -541,8 +558,17 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
             logger.info(f"[{sym}/momentum] BUY skipped — recent buy order exists (dedup)")
             continue
 
+        # Cooldown guard: don't re-buy within 30 min of selling the same symbol.
+        if recently_sold and sym in recently_sold:
+            logger.info(f"[{sym}/momentum] BUY skipped — sold in last 30 min (cooldown)")
+            continue
+
         if not is_crypto and not bull_market:
             logger.info(f"[{sym}/momentum] BUY skipped — SPY below SMA20 (bear regime)")
+            continue
+
+        if is_crypto and not bull_market and decision.confidence < 85:
+            logger.info(f"[{sym}/momentum] BUY skipped — BEAR regime + confidence {decision.confidence}% < 85%")
             continue
 
         if not _ok_to_buy(account):
@@ -638,10 +664,11 @@ def run_cycle() -> dict:
     # This cleans up BTC/USD phantom orders that Alpaca accepts but never fills.
     alpaca.cancel_stale_open_orders(min_age_minutes=5)
 
-    # Fetch recent buy history ONCE per cycle.
-    # Used across all sub-cycles to prevent re-buying crypto when Alpaca positions
-    # API hasn't caught up yet (typically 2-3 min lag after a crypto fill).
+    # Fetch recent buy/sell history ONCE per cycle.
+    # recently_bought: prevents re-buying crypto while Alpaca positions API lags (2-3 min).
+    # recently_sold:   30-min cooldown — prevents flip-flopping back into a symbol we just exited.
     recently_bought = alpaca.get_recent_buy_symbols(lookback_minutes=15)
+    recently_sold   = alpaca.get_recent_sell_symbols(lookback_minutes=30)
 
     # Build macro context block — injected into every LLM decision prompt so the
     # model knows the broad market regime and portfolio health before deciding.
@@ -660,22 +687,25 @@ def run_cycle() -> dict:
         s_placed, s_sold = _run_stock_cycle(
             alpaca, risk, telegram, fundamental_agent, technical_agent,
             decision_agent, account, positions,
-            bull_market=bull_market, macro_context=macro_context)
+            bull_market=bull_market, recently_sold=recently_sold,
+            macro_context=macro_context)
     else:
         logger.info("Stock market closed — skipping core stock cycle")
 
-    # Core crypto: always runs 24/7 (no regime filter — crypto has its own cycle)
+    # Core crypto: always runs 24/7; applies BEAR regime confidence bar + sell cooldown.
     c_placed, c_sold = _run_crypto_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent,
         decision_agent, account, positions,
-        recently_bought=recently_bought, macro_context=macro_context)
+        recently_bought=recently_bought, recently_sold=recently_sold,
+        bull_market=bull_market, macro_context=macro_context)
 
     # Momentum: crypto 24/7, stocks only in bull regime
     m_placed, m_sold = _run_momentum_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent,
         decision_agent, account, positions,
         stock_market_open=stock_market_open, bull_market=bull_market,
-        recently_bought=recently_bought, macro_context=macro_context)
+        recently_bought=recently_bought, recently_sold=recently_sold,
+        macro_context=macro_context)
 
     total_placed = s_placed + c_placed + m_placed
     total_sold   = s_sold   + c_sold   + m_sold
