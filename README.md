@@ -8,22 +8,22 @@ An autonomous paper trading system that runs 24/7. Three AI agents analyze stock
 
 ```mermaid
 flowchart TD
-    CRON["cron-job.org\nevery 2 minutes"] -->|POST workflow_dispatch| GH["GitHub Actions"]
+    CRON["cron-job.org - every 2 min"] -->|POST workflow_dispatch| GH["GitHub Actions"]
     GH --> MAIN["main.py"]
 
-    MAIN -->|"Market hours"| SC["Stock Cycle\nAAPL / TSLA / NVDA / MSFT / AMZN"]
-    MAIN -->|"24/7"| CC["Crypto Cycle\nETH / SOL / DOGE / AVAX"]
-    MAIN -->|"Stocks: market hours\nCrypto: 24/7"| MC["Momentum Cycle\nStocks: Yahoo Finance screeners\nCrypto: CoinGecko top-100"]
+    MAIN -->|Market hours| SC["Stock Cycle\nAAPL / TSLA / NVDA / MSFT / AMZN"]
+    MAIN -->|24 slash 7| CC["Crypto Cycle\nETH / SOL / DOGE / AVAX"]
+    MAIN -->|Stocks + Crypto| MC["Momentum Cycle\nStocks: Yahoo Finance screeners\nCrypto: CoinGecko top-100"]
 
-    SC --> FA["Fundamental Agent\nP/E · EPS · Analyst rating\nNews headlines · Insider trades"]
+    SC --> FA["Fundamental Agent\nP/E, EPS, Analyst rating\nNews headlines, Insider trades"]
     CC --> FA
     MC --> FA
 
-    SC --> TA["Technical Agent\nRSI · MACD · Bollinger Bands\nSMA 50/200 · OBV · Volume"]
+    SC --> TA["Technical Agent\nRSI, MACD, Bollinger Bands\nSMA 50/200, OBV, Volume"]
     CC --> TA
     MC --> TA
 
-    FA --> DA["Decision Agent — Bull/Bear Debate\nCerebras -> Groq -> Gemini -> OpenRouter\nOutputs: BUY / SELL / HOLD + confidence 0-100"]
+    FA --> DA["Decision Agent - Bull/Bear Debate\nCerebras, Groq, Gemini, OpenRouter\nBUY / SELL / HOLD + confidence 0-100"]
     TA --> DA
     MACRO["Macro Context\nSPY BULL/BEAR regime\nPortfolio drawdown"] --> DA
 
@@ -44,13 +44,13 @@ Every decision automatically falls through to the next provider on any 429 / quo
 flowchart LR
     REQ(["LLM Request"])
 
-    REQ --> C["1. Cerebras\ngpt-oss-120b 120B model\nfastest, ~2 seconds"]
-    C -->|"success"| OUT(["Decision JSON"])
-    C -->|"429 rate limit"| G["2. Groq\nllama-3.3-70b\n~3 seconds"]
-    G -->|"success"| OUT
-    G -->|"429 rate limit"| GE["3. Gemini\ngemini-2.0-flash\n~5 seconds"]
-    GE -->|"success"| OUT
-    GE -->|"429 rate limit"| OR["4. OpenRouter\nllama-3.3-70b free\nlast resort"]
+    REQ --> C["1. Cerebras\ngpt-oss-120b\nfastest ~2s"]
+    C -->|success| OUT(["Decision JSON"])
+    C -->|429 rate limit| G["2. Groq\nllama-3.3-70b\n~3 seconds"]
+    G -->|success| OUT
+    G -->|429 rate limit| GE["3. Gemini\ngemini-2.0-flash\n~5 seconds"]
+    GE -->|success| OUT
+    GE -->|429 rate limit| OR["4. OpenRouter\nllama-3.3-70b free\nlast resort"]
     OR --> OUT
 ```
 
@@ -59,11 +59,11 @@ flowchart LR
 ## Capital Allocation
 
 ```mermaid
-pie title Portfolio Target Allocation
+pie title "Portfolio Target Allocation"
     "Cash Reserve locked" : 20
-    "Core Stocks up to 5 positions" : 45
-    "Core Crypto max 35 percent" : 25
-    "Momentum Budget shared" : 10
+    "Core Stocks - up to 5 positions" : 45
+    "Core Crypto - max 35 percent" : 25
+    "Momentum Budget" : 10
 ```
 
 | Tier | Budget | Rules |
@@ -81,24 +81,24 @@ Both stocks and crypto are discovered dynamically every cycle — no hardcoded t
 
 ```mermaid
 flowchart TD
-    YF["Yahoo Finance\nScreeners — market hours only"]
-    CG["CoinGecko\nTop-100 coins by 24h volume — 24/7"]
+    YF["Yahoo Finance\nScreeners - market hours only"]
+    CG["CoinGecko\nTop-100 coins by 24h volume - 24/7"]
 
-    YF -->|"most actives"| SA["Most Active Stocks by Volume"]
-    YF -->|"top gainers"| SB["Top Day Gainers"]
-    CG -->|"filter to Alpaca-tradeable"| CA["Crypto Candidates\nScore: 24h change x vol/mcap ratio"]
+    YF -->|most actives| SA["Most Active Stocks by Volume"]
+    YF -->|top gainers| SB["Top Day Gainers"]
+    CG -->|filter to Alpaca-tradeable| CA["Crypto Candidates\nScore: 24h change x vol/mcap ratio"]
 
     SA --> DEDUP["Deduplicate and Filter\nno ETFs, no penny stocks under 2 USD\nexclude core watchlist symbols"]
     SB --> DEDUP
     CA --> DEDUP
 
-    DEDUP --> PRE["Technical Pre-filter — no LLM\nvolume 1.8x avg AND RSI 55-75 AND MACD hist positive\nPass 2 of 3 checks to proceed"]
+    DEDUP --> PRE["Technical Pre-filter - no LLM\nvolume 1.8x avg AND RSI 55-75 AND MACD positive\nPass 2 of 3 checks to proceed"]
 
-    PRE -->|"2-4 candidates survive"| LLM["Decision Agent\nLLM call only on pre-filtered candidates"]
-    PRE -->|"fail"| SKIP["Skip — no LLM call"]
+    PRE -->|2-4 candidates survive| LLM["Decision Agent\nLLM call only on pre-filtered candidates"]
+    PRE -->|fail| SKIP["Skip - no LLM call"]
 
-    LLM -->|"conf 80+"| BUY["BUY momentum position"]
-    LLM -->|"conf below 80"| HOLD["HOLD"]
+    LLM -->|conf 80+| BUY["BUY momentum position"]
+    LLM -->|conf below 80| HOLD["HOLD"]
 ```
 
 ---
@@ -109,17 +109,17 @@ Every decision follows a mandatory 3-step process before outputting any action:
 
 ```mermaid
 flowchart TD
-    DATA["Input: Fundamentals + Technicals\nNews / Insider trades / Macro regime / Portfolio context"]
+    DATA["Input: Fundamentals + Technicals\nNews, Insider trades, Macro regime, Portfolio context"]
 
-    DATA --> S1["Step 1 — Bull Case\n3 strongest data-backed reasons to BUY\nRSI value, EPS growth, analyst target upside..."]
-    DATA --> S2["Step 2 — Bear Case\n3 strongest data-backed reasons to SELL\nMACD signal, insider sale amount, debt/equity..."]
+    DATA --> S1["Step 1 - Bull Case\n3 strongest data-backed reasons to BUY\nRSI value, EPS growth, analyst target upside"]
+    DATA --> S2["Step 2 - Bear Case\n3 strongest data-backed reasons to SELL\nMACD signal, insider sale amount, debt/equity"]
 
-    S1 --> S3["Step 3 — Verdict\nWeigh both sides\nOnly act when one side clearly dominates"]
+    S1 --> S3["Step 3 - Verdict\nWeigh both sides\nOnly act when one side clearly dominates"]
     S2 --> S3
 
-    S3 -->|"conf 75+ and clear winner"| ACT["BUY or SELL"]
-    S3 -->|"conf 60-74 or mixed signals"| HOLD2["HOLD"]
-    S3 -->|"conf below 60"| HOLD3["HOLD"]
+    S3 -->|conf 75+ and clear winner| ACT["BUY or SELL"]
+    S3 -->|conf 60-74 or mixed signals| HOLD2["HOLD"]
+    S3 -->|conf below 60| HOLD3["HOLD"]
 
     ACT --> RULES["Calibration applied automatically\nBEAR regime: +5 pts required for any BUY\nInsider SELLING: strong bear signal\nInsider BUYING: moderate bull signal\nNegative news: bear case weighted higher"]
 ```
@@ -205,9 +205,9 @@ The dedup guard prevents two specific failure modes:
 flowchart LR
     CHECK["get_recent_buy_symbols()"]
 
-    CHECK -->|"active buy in last 15 min"| B1["BLOCK\nPositions API lag after crypto fill"]
-    CHECK -->|"cancelled buy in last 90 min"| B2["BLOCK\nGhost order retry loop"]
-    CHECK -->|"nothing recent"| OK["ALLOW BUY"]
+    CHECK -->|active buy in last 15 min| B1["BLOCK\nPositions API lag after crypto fill"]
+    CHECK -->|cancelled buy in last 90 min| B2["BLOCK\nGhost order retry loop"]
+    CHECK -->|nothing recent| OK["ALLOW BUY"]
 ```
 
 This replaced the old logic that only tracked non-cancelled orders, which caused BTC/USD to be re-ordered every 18 minutes in a loop (65 phantom orders, 0 filled).
