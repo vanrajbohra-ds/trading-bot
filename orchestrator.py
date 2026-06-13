@@ -178,9 +178,12 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
 
     trades_sold = 0
     for t in risk.check_all_stop_take(stock_pos):
+        _snap = stock_pos.get(t["symbol"], {})
         if alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])["success"]:
             trades_sold += 1
-            telegram.risk_exit_alert(t["symbol"], t["qty"], t["reason"])
+            telegram.risk_exit_alert(t["symbol"], t["qty"], t["reason"],
+                                     avg_entry_price=_snap.get("avg_entry_price"),
+                                     current_price=_snap.get("current_price"))
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
 
@@ -244,7 +247,8 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             telegram.trade_alert(symbol, decision.action, qty, decision.confidence,
                                   decision.rationale, account["cash"],
                                   price=technical.current_price,
-                                  fundamental=fundamental, technical=technical)
+                                  fundamental=fundamental, technical=technical,
+                                  avg_entry_price=pos["avg_entry_price"])
         else:
             telegram.error_alert(f"Order {decision.action} {symbol}", result.get("error", ""))
 
@@ -265,9 +269,12 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
     for t in risk.check_all_stop_take(core_crypto,
                                        stop_loss_pct=CRYPTO_STOP_LOSS_PCT,
                                        take_profit_pct=CRYPTO_TAKE_PROFIT_PCT):
+        _snap = core_crypto.get(t["symbol"], {})
         if alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])["success"]:
             trades_sold += 1
-            telegram.risk_exit_alert(t["symbol"], t["qty"], t["reason"])
+            telegram.risk_exit_alert(t["symbol"], t["qty"], t["reason"],
+                                     avg_entry_price=_snap.get("avg_entry_price"),
+                                     current_price=_snap.get("current_price"))
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
 
@@ -342,7 +349,8 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             telegram.trade_alert(alpaca_sym, decision.action, qty_for_alert,
                                   decision.confidence, decision.rationale, account["cash"],
                                   price=technical.current_price,
-                                  fundamental=fundamental, technical=technical)
+                                  fundamental=fundamental, technical=technical,
+                                  avg_entry_price=pos["avg_entry_price"])
         else:
             telegram.error_alert(f"Order {decision.action} {alpaca_sym}", result.get("error", ""))
 
@@ -401,18 +409,24 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
     for t in risk.check_all_stop_take(stock_mom,
                                        stop_loss_pct=MOMENTUM_STOCK_STOP_PCT,
                                        take_profit_pct=MOMENTUM_STOCK_TAKE_PCT):
+        _snap = stock_mom.get(t["symbol"], {})
         if alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])["success"]:
             trades_sold += 1
-            telegram.risk_exit_alert(t["symbol"], t["qty"], f"[MOMENTUM] {t['reason']}")
+            telegram.risk_exit_alert(t["symbol"], t["qty"], f"[MOMENTUM] {t['reason']}",
+                                     avg_entry_price=_snap.get("avg_entry_price"),
+                                     current_price=_snap.get("current_price"))
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
 
     for t in risk.check_all_stop_take(crypto_mom,
                                        stop_loss_pct=MOMENTUM_CRYPTO_STOP_PCT,
                                        take_profit_pct=MOMENTUM_CRYPTO_TAKE_PCT):
+        _snap = crypto_mom.get(t["symbol"], {})
         if alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])["success"]:
             trades_sold += 1
-            telegram.risk_exit_alert(t["symbol"], t["qty"], f"[MOMENTUM] {t['reason']}")
+            telegram.risk_exit_alert(t["symbol"], t["qty"], f"[MOMENTUM] {t['reason']}",
+                                     avg_entry_price=_snap.get("avg_entry_price"),
+                                     current_price=_snap.get("current_price"))
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
 
@@ -508,7 +522,8 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
                 telegram.trade_alert(sym, "SELL", qty, decision.confidence,
                                       f"[MOMENTUM] {decision.rationale}", account["cash"],
                                       price=technical.current_price,
-                                      fundamental=fundamental, technical=technical)
+                                      fundamental=fundamental, technical=technical,
+                                      avg_entry_price=pos["avg_entry_price"])
             else:
                 telegram.error_alert(f"Momentum SELL {sym}", result.get("error", ""))
             continue
@@ -589,7 +604,8 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
             telegram.trade_alert(sym, "BUY", qty_for_alert, decision.confidence,
                                   f"[MOMENTUM] {decision.rationale}", account["cash"],
                                   price=technical.current_price,
-                                  fundamental=fundamental, technical=technical)
+                                  fundamental=fundamental, technical=technical,
+                                  avg_entry_price=pos["avg_entry_price"])
         else:
             logger.error(f"[{sym}/momentum] Order failed: {result.get('error')}")
             telegram.error_alert(f"Momentum BUY {sym}", result.get("error", ""))

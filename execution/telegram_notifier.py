@@ -27,80 +27,25 @@ class TelegramNotifier:
             logger.warning("Telegram error: %s", e)
 
     # ------------------------------------------------------------------ #
-    # Internal helpers                                                     #
+    # Formatting helpers                                                   #
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _fmt_technical(technical) -> str:
-        if technical is None or technical.fetch_error:
-            return "  Data unavailable"
-        lines = []
-
-        if technical.rsi is not None:
-            signal = "OVERSOLD" if technical.rsi < 30 else ("OVERBOUGHT" if technical.rsi > 70 else "neutral")
-            lines.append(f"  RSI {technical.rsi:.1f} · <b>{signal}</b>")
-
-        if technical.macd_hist is not None:
-            direction = "BULLISH" if technical.macd_hist > 0 else "BEARISH"
-            lines.append(f"  MACD · <b>{direction}</b> (hist {technical.macd_hist:+.4f})")
-
-        if technical.bb_pband is not None:
-            pos = "NEAR UPPER band" if technical.bb_pband > 0.8 else (
-                  "NEAR LOWER band" if technical.bb_pband < 0.2 else "mid-band")
-            lines.append(f"  Bollinger · {pos} ({technical.bb_pband:.0%})")
-
-        if technical.golden_cross is not None:
-            cross = "GOLDEN CROSS" if technical.golden_cross else "DEATH CROSS"
-            lines.append(f"  Trend · <b>{cross}</b> (SMA50={technical.sma50:.2f})")
-
-        if technical.obv_trend:
-            lines.append(f"  OBV · {technical.obv_trend}")
-
-        if technical.volume_ratio is not None:
-            vol_label = "HIGH" if technical.volume_ratio > 1.5 else (
-                        "LOW"  if technical.volume_ratio < 0.7 else "normal")
-            lines.append(f"  Volume · {technical.volume_ratio:.1f}x avg [{vol_label}]")
-
-        return "\n".join(lines) if lines else "  No indicator data"
+    def _price_str(p: float) -> str:
+        """Format price: 4 decimals for sub-$10 assets (crypto), 2 for stocks."""
+        if p is None:
+            return "N/A"
+        return f"${p:,.4f}" if p < 10 else f"${p:,.2f}"
 
     @staticmethod
-    def _fmt_fundamental(fundamental) -> str:
-        if fundamental is None or fundamental.fetch_error:
-            return "  Data unavailable"
-
-        if fundamental.asset_type == "crypto":
-            lines = []
-            if fundamental.market_cap:
-                cap = fundamental.market_cap
-                cap_str = f"${cap/1e12:.2f}T" if cap >= 1e12 else f"${cap/1e9:.1f}B"
-                lines.append(f"  Market Cap · {cap_str}")
-            if fundamental.week52_high and fundamental.week52_low and fundamental.current_price:
-                rng_pct = (fundamental.current_price - fundamental.week52_low) / (
-                           fundamental.week52_high - fundamental.week52_low) * 100
-                lines.append(
-                    f"  52W · ${fundamental.week52_low:,.2f} – ${fundamental.week52_high:,.2f}"
-                    f"  ({rng_pct:.0f}% into range)"
-                )
-            return "\n".join(lines) if lines else "  No market data"
-
-        # Stock
-        lines = []
-        if fundamental.analyst_recommendation:
-            rating = fundamental.analyst_recommendation.replace("_", " ").title()
-            target_str = ""
-            if fundamental.analyst_target_price and fundamental.current_price:
-                upside = (fundamental.analyst_target_price - fundamental.current_price) / fundamental.current_price * 100
-                target_str = f" · target ${fundamental.analyst_target_price:.2f} ({upside:+.1f}%)"
-            lines.append(f"  Analyst · <b>{rating}</b>{target_str}")
-        if fundamental.pe_ratio:
-            lines.append(f"  P/E · {fundamental.pe_ratio:.1f}x")
-        if fundamental.revenue_growth:
-            lines.append(f"  Revenue growth · {fundamental.revenue_growth*100:+.1f}%")
-        if fundamental.earnings_growth:
-            lines.append(f"  Earnings growth · {fundamental.earnings_growth*100:+.1f}%")
-        if fundamental.recent_upgrades:
-            lines.append(f"  Upgrades · {', '.join(fundamental.recent_upgrades[:2])}")
-        return "\n".join(lines) if lines else "  No fundamental data"
+    def _qty_str(qty: float, is_crypto: bool) -> str:
+        if is_crypto:
+            if qty < 1:
+                return f"{qty:.6f}"
+            if qty < 100:
+                return f"{qty:,.2f}"
+            return f"{qty:,.0f}"
+        return str(int(qty))
 
     # ------------------------------------------------------------------ #
     # Public alert methods                                                 #
@@ -108,52 +53,129 @@ class TelegramNotifier:
 
     def trade_alert(self, symbol: str, action: str, qty, confidence: int,
                     rationale: str, cash_remaining: float,
-                    price: float = None, fundamental=None, technical=None):
-        icon = "🟢" if action == "BUY" else "🔴"
-        is_notional = isinstance(qty, float)
+                    price: float = None, fundamental=None, technical=None,
+                    avg_entry_price: float = None):
+        is_crypto   = "/" in symbol
+        is_buy      = action == "BUY"
+        # Crypto BUYs are submitted as dollar notional; SELLs and stocks use unit count
+        is_notional = is_buy and is_crypto
+        icon        = "🟢" if is_buy else "🔴"
+        asset_icon  = "🪙" if is_crypto else "📈"
+        fqty        = float(qty)
 
-        # Units + cost line
-        if is_notional:
-            units_line = f"Notional:   <b>${qty:,.2f}</b>"
-            cost_line  = ""
-        else:
-            unit_label = "shares" if qty != 1 else "share"
-            if price:
-                cost = qty * price
-                units_line = f"Units:      <b>{qty} {unit_label} @ ${price:,.2f}</b>"
-                cost_line  = f"Cost:       ${cost:,.2f}\n"
+        lines = [
+            f"{icon} <b>{action} {symbol}</b>  ·  {confidence}% conf",
+            "─" * 24,
+        ]
+
+        # ── Units / cost line ─────────────────────────────────────────────
+        if price and price > 0:
+            ps = self._price_str(price)
+            if is_notional:
+                approx = fqty / price
+                u = (f"~{approx:,.0f}" if approx >= 100
+                     else (f"~{approx:.3f}" if approx >= 1 else f"~{approx:.6f}"))
+                lines.append(f"{asset_icon} {u} units @ {ps}  ·  cost ${fqty:,.0f}")
             else:
-                units_line = f"Units:      <b>{qty} {unit_label}</b>"
-                cost_line  = ""
+                u    = self._qty_str(fqty, is_crypto)
+                unit = "units" if is_crypto else ("share" if fqty == 1 else "shares")
+                val  = fqty * price
+                lbl  = "cost" if is_buy else "value"
+                lines.append(f"{asset_icon} {u} {unit} @ {ps}  ·  {lbl} ${val:,.0f}")
+        else:
+            if is_notional:
+                lines.append(f"{asset_icon} ${fqty:,.2f} notional")
+            else:
+                u    = self._qty_str(fqty, is_crypto)
+                unit = "units" if is_crypto else "shares"
+                lines.append(f"{asset_icon} {u} {unit}")
 
-        msg = (
-            f"{icon} <b>TRADE ALERT — {action} {symbol}</b>\n"
-            f"{units_line}\n"
-            f"{cost_line}"
-            f"Confidence: {confidence}%\n"
-        )
+        # ── P&L — SELLs only ─────────────────────────────────────────────
+        if (not is_buy and avg_entry_price and avg_entry_price > 0
+                and price and price > 0 and fqty > 0):
+            pnl     = (price - avg_entry_price) * fqty
+            pnl_pct = (price - avg_entry_price) / avg_entry_price * 100
+            pi      = "📈" if pnl >= 0 else "📉"
+            outcome = "Profit" if pnl >= 0 else "Loss"
+            sign    = "+" if pnl >= 0 else ""
+            entry_s = self._price_str(avg_entry_price)
+            lines.append(f"{pi} {outcome}  {sign}${abs(pnl):,.0f}  ({sign}{pnl_pct:.1f}%)  [entry {entry_s}]")
 
-        # Technical signals
-        tech_section = self._fmt_technical(technical)
-        fund_icon = "🔗" if (fundamental and fundamental.asset_type == "crypto") else "🏢"
-        fund_section = self._fmt_fundamental(fundamental)
+        lines.append(f"💵 Cash: ${cash_remaining:,.0f}")
+        lines.append("")
 
-        msg += (
-            f"\n<b>📊 Technical:</b>\n{tech_section}\n"
-            f"\n<b>{fund_icon} Fundamental:</b>\n{fund_section}\n"
-            f"\n<b>💬 Rationale:</b> {rationale}\n"
-            f"Cash left:  ${cash_remaining:,.2f}"
-        )
+        # ── Technical — single compact line ──────────────────────────────
+        if technical and not getattr(technical, "fetch_error", None):
+            tech = []
+            if technical.rsi is not None:
+                lbl = " OVERSOLD" if technical.rsi < 30 else (" OVERBOUGHT" if technical.rsi > 70 else "")
+                tech.append(f"RSI {technical.rsi:.1f}{lbl}")
+            if technical.macd_hist is not None:
+                tech.append(f"MACD {'▲' if technical.macd_hist > 0 else '▼'}")
+            if technical.volume_ratio is not None:
+                vl = " HIGH" if technical.volume_ratio > 1.5 else (" LOW" if technical.volume_ratio < 0.7 else "")
+                tech.append(f"Vol {technical.volume_ratio:.1f}×avg{vl}")
+            if tech:
+                lines.append(f"📊 {' · '.join(tech)}")
 
-        self.send(msg)
+        # ── Fundamental — single compact line ─────────────────────────────
+        if fundamental and not getattr(fundamental, "fetch_error", None):
+            fund = []
+            if is_crypto:
+                if fundamental.news_sentiment_label:
+                    fund.append(f"Sentiment {fundamental.news_sentiment_label}")
+                if (fundamental.week52_high and fundamental.week52_low
+                        and fundamental.current_price
+                        and fundamental.week52_high > fundamental.week52_low):
+                    rng = ((fundamental.current_price - fundamental.week52_low)
+                           / (fundamental.week52_high - fundamental.week52_low) * 100)
+                    fund.append(f"{rng:.0f}% into 52W range")
+            else:
+                if fundamental.analyst_recommendation:
+                    fund.append(fundamental.analyst_recommendation.replace("_", " ").title())
+                if fundamental.analyst_target_price and fundamental.current_price:
+                    up = ((fundamental.analyst_target_price - fundamental.current_price)
+                          / fundamental.current_price * 100)
+                    fund.append(f"target ${fundamental.analyst_target_price:.0f} ({up:+.0f}%)")
+                if fundamental.revenue_growth:
+                    fund.append(f"Rev {fundamental.revenue_growth * 100:+.0f}%")
+                if fundamental.news_sentiment_label:
+                    fund.append(f"Sentiment {fundamental.news_sentiment_label}")
+            if fund:
+                f_icon = "🔗" if is_crypto else "🏢"
+                lines.append(f"{f_icon} {' · '.join(fund)}")
 
-    def risk_exit_alert(self, symbol: str, qty, reason: str):
-        msg = (
-            f"⚠️ <b>RISK EXIT</b>\n"
-            f"Action: SELL {symbol} ({reason})\n"
-            f"Units:  {qty}"
-        )
-        self.send(msg)
+        # ── Rationale — trimmed ───────────────────────────────────────────
+        r = rationale.strip()
+        if len(r) > 140:
+            r = r[:137] + "..."
+        lines.append("")
+        lines.append(f"💬 {r}")
+
+        self.send("\n".join(lines))
+
+    def risk_exit_alert(self, symbol: str, qty, reason: str,
+                        avg_entry_price: float = None, current_price: float = None):
+        is_crypto = "/" in symbol
+        fqty      = float(qty)
+        qty_str   = self._qty_str(fqty, is_crypto)
+        unit      = "units" if is_crypto else ("share" if fqty == 1 else "shares")
+
+        lines = [
+            f"⚠️ <b>RISK EXIT — {symbol}</b>",
+            f"🛑 {reason}  ·  {qty_str} {unit}",
+        ]
+
+        if avg_entry_price and avg_entry_price > 0 and current_price and current_price > 0:
+            pnl     = (current_price - avg_entry_price) * fqty
+            pnl_pct = (current_price - avg_entry_price) / avg_entry_price * 100
+            pi      = "📈" if pnl >= 0 else "📉"
+            sign    = "+" if pnl >= 0 else ""
+            entry_s = self._price_str(avg_entry_price)
+            curr_s  = self._price_str(current_price)
+            lines.append(f"{pi} {sign}${abs(pnl):,.0f} ({sign}{pnl_pct:.1f}%)  [{entry_s} → {curr_s}]")
+
+        self.send("\n".join(lines))
 
     def error_alert(self, context: str, error: str):
         msg = (
@@ -185,11 +207,11 @@ class TelegramNotifier:
             for sym, p in positions.items():
                 is_crypto = "/" in sym
                 qty    = p.get("qty", 0)
-                qty_str = f"{float(qty):.4f}" if is_crypto else str(int(qty))
-                unit    = "units" if is_crypto else "shares"
-                pct     = p.get("unrealized_plpc", 0) * 100
-                icon    = "📈" if pct >= 0 else "📉"
-                msg    += f"  {icon} {sym}: {qty_str} {unit} ({pct:+.1f}%)\n"
+                qty_s  = self._qty_str(float(qty), is_crypto)
+                unit   = "units" if is_crypto else "shares"
+                pct    = p.get("unrealized_plpc", 0) * 100
+                icon   = "📈" if pct >= 0 else "📉"
+                msg   += f"  {icon} {sym}: {qty_s} {unit} ({pct:+.1f}%)\n"
         else:
             msg += "\nNo open positions — scanning for signals.\n"
 
@@ -216,12 +238,12 @@ class TelegramNotifier:
             msg += "\n<b>Open Positions:</b>\n"
             for sym, p in positions.items():
                 is_crypto = "/" in sym
-                qty = p.get("qty", 0)
-                qty_str = f"{float(qty):.4f}" if is_crypto else str(int(qty))
-                unit = "units" if is_crypto else "shares"
-                pct = p.get("unrealized_plpc", 0) * 100
-                pct_icon = "📈" if pct >= 0 else "📉"
-                msg += f"  {pct_icon} {sym}: {qty_str} {unit} ({pct:+.1f}%)\n"
+                qty   = p.get("qty", 0)
+                qty_s = self._qty_str(float(qty), is_crypto)
+                unit  = "units" if is_crypto else "shares"
+                pct   = p.get("unrealized_plpc", 0) * 100
+                pi    = "📈" if pct >= 0 else "📉"
+                msg  += f"  {pi} {sym}: {qty_s} {unit} ({pct:+.1f}%)\n"
         else:
             msg += "\nNo open positions."
 
