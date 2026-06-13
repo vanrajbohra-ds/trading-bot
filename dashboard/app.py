@@ -28,13 +28,26 @@ st.markdown("""<style>
     div[data-testid="stRadio"] label{font-size:.82rem}
 </style>""", unsafe_allow_html=True)
 
-CRYPTO_SYMBOLS = {"BTC/USD", "SOL/USD", "DOGE/USD", "AVAX/USD", "LINK/USD", "UNI/USD"}
-CRYPTO_YF_MAP  = {"BTC/USD": "BTC-USD", "SOL/USD": "SOL-USD",
-                  "DOGE/USD": "DOGE-USD", "AVAX/USD": "AVAX-USD"}
+CRYPTO_SYMBOLS = {
+    "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD", "AVAX/USD",
+    "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD", "AAVE/USD",
+    "GRT/USD", "MKR/USD", "XLM/USD", "XTZ/USD", "BAT/USD", "SHIB/USD",
+}
+CRYPTO_YF_MAP  = {
+    "BTC/USD": "BTC-USD", "ETH/USD": "ETH-USD", "SOL/USD": "SOL-USD",
+    "DOGE/USD": "DOGE-USD", "AVAX/USD": "AVAX-USD", "LTC/USD": "LTC-USD",
+    "BCH/USD": "BCH-USD", "LINK/USD": "LINK-USD", "UNI/USD": "UNI-USD",
+    "AAVE/USD": "AAVE-USD", "GRT/USD": "GRT-USD", "MKR/USD": "MKR-USD",
+    "XLM/USD": "XLM-USD", "XTZ/USD": "XTZ-USD", "BAT/USD": "BAT-USD",
+    "SHIB/USD": "SHIB-USD",
+}
 _CRYPTO_NORM   = {
-    "BTCUSD": "BTC/USD", "ETHUSD": "ETH/USD", "SOLUSD": "SOL/USD",
+    "BTCUSD": "BTC/USD",  "ETHUSD": "ETH/USD",  "SOLUSD": "SOL/USD",
     "DOGEUSD": "DOGE/USD", "AVAXUSD": "AVAX/USD", "LTCUSD": "LTC/USD",
-    "LINKUSD": "LINK/USD", "UNIUSD": "UNI/USD",
+    "BCHUSD": "BCH/USD",  "LINKUSD": "LINK/USD", "UNIUSD": "UNI/USD",
+    "AAVEUSD": "AAVE/USD", "GRTUSD": "GRT/USD",  "MKRUSD": "MKR/USD",
+    "XLMUSD": "XLM/USD",  "XTZUSD": "XTZ/USD",  "BATUSD": "BAT/USD",
+    "SHIBUSD": "SHIB/USD",
 }
 
 # ── Credentials ───────────────────────────────────────────────────────────────
@@ -219,7 +232,6 @@ weekly_ret  = (portfolio_value / STARTING_CAP - 1) * 100
 # Config
 try:
     from config import (WATCHLIST as _CORE_STOCKS, CRYPTO_WATCHLIST as _CORE_CRYPTO,
-                        MOMENTUM_CRYPTO_UNIVERSE as _MOMENTUM_CRYPTO,
                         MOMENTUM_STOCK_STOP_PCT, MOMENTUM_STOCK_TAKE_PCT,
                         MOMENTUM_CRYPTO_STOP_PCT, MOMENTUM_CRYPTO_TAKE_PCT,
                         MOMENTUM_TOTAL_BUDGET_PCT)
@@ -228,7 +240,7 @@ except Exception:
     _CORE_SYMS = set()
     MOMENTUM_STOCK_STOP_PCT  = 0.04; MOMENTUM_STOCK_TAKE_PCT  = 0.08
     MOMENTUM_CRYPTO_STOP_PCT = 0.06; MOMENTUM_CRYPTO_TAKE_PCT = 0.12
-    MOMENTUM_TOTAL_BUDGET_PCT = 0.10; _MOMENTUM_CRYPTO = ["DOGE/USD","AVAX/USD","LINK/USD","UNI/USD"]
+    MOMENTUM_TOTAL_BUDGET_PCT = 0.10
 
 mom_pos      = [p for p in positions if isinstance(p, dict)
                 and p.get("symbol", "") not in _CORE_SYMS and float(p.get("qty", 0)) != 0]

@@ -13,8 +13,16 @@ _CRYPTO_SYMBOL_NORM = {
     "DOGEUSD": "DOGE/USD",
     "AVAXUSD": "AVAX/USD",
     "LTCUSD":  "LTC/USD",
+    "BCHUSD":  "BCH/USD",
     "LINKUSD": "LINK/USD",
     "UNIUSD":  "UNI/USD",
+    "AAVEUSD": "AAVE/USD",
+    "GRTUSD":  "GRT/USD",
+    "MKRUSD":  "MKR/USD",
+    "XLMUSD":  "XLM/USD",
+    "XTZUSD":  "XTZ/USD",
+    "BATUSD":  "BAT/USD",
+    "SHIBUSD": "SHIB/USD",
 }
 
 

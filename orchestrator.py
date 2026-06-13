@@ -7,13 +7,13 @@ from config import (
     MAX_CRYPTO_POSITIONS, CRYPTO_STOP_LOSS_PCT, CRYPTO_TAKE_PROFIT_PCT,
     CRYPTO_PORTFOLIO_CAP, MIN_CASH_RESERVE_PCT,
     RESERVE_DEPLOY_CONFIDENCE, RESERVE_MAX_DEPLOY_PCT,
-    MOMENTUM_CRYPTO_UNIVERSE, MOMENTUM_SCREENER_LIMIT,
+    MOMENTUM_SCREENER_LIMIT,
     MOMENTUM_TOTAL_BUDGET_PCT, MAX_MOMENTUM_POSITIONS,
     MOMENTUM_MIN_CONFIDENCE, MOMENTUM_VOLUME_RATIO_MIN,
     MOMENTUM_STOCK_STOP_PCT, MOMENTUM_STOCK_TAKE_PCT,
     MOMENTUM_CRYPTO_STOP_PCT, MOMENTUM_CRYPTO_TAKE_PCT,
 )
-from execution.market_scanner import get_momentum_candidates
+from execution.market_scanner import get_momentum_candidates, get_momentum_crypto_candidates
 from agents.fundamental_agent import FundamentalAgent
 from agents.technical_agent import TechnicalAgent
 from agents.decision_agent import DecisionAgent
@@ -134,9 +134,7 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                      bull_market: bool = True,
                      macro_context: str = "") -> tuple:
     """Core WATCHLIST stocks. Returns (trades_placed, trades_sold)."""
-    # Exclude crypto momentum symbols so they're never treated as stocks
-    excl = set(MOMENTUM_CRYPTO_UNIVERSE)
-    stock_pos = {s: p for s, p in positions.items() if "/" not in s and s not in excl}
+    stock_pos = {s: p for s, p in positions.items() if "/" not in s}
 
     trades_sold = 0
     for t in risk.check_all_stop_take(stock_pos):
@@ -146,7 +144,7 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
 
-    stock_pos = {s: p for s, p in positions.items() if "/" not in s and s not in excl}
+    stock_pos = {s: p for s, p in positions.items() if "/" not in s}
 
     trades_placed = 0
     for symbol in WATCHLIST:
@@ -202,7 +200,7 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             trades_placed += 1
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
-            stock_pos = {s: p for s, p in positions.items() if "/" not in s and s not in excl}
+            stock_pos = {s: p for s, p in positions.items() if "/" not in s}
             telegram.trade_alert(symbol, decision.action, qty, decision.confidence,
                                   decision.rationale, account["cash"],
                                   price=technical.current_price,
@@ -219,9 +217,9 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                       decision_agent, account, positions,
                       recently_bought: set = None,
                       macro_context: str = "") -> tuple:
-    """Core crypto (BTC, SOL). Returns (trades_placed, trades_sold)."""
-    excl = set(MOMENTUM_CRYPTO_UNIVERSE)
-    core_crypto = {s: p for s, p in positions.items() if "/" in s and s not in excl}
+    """Core crypto (ETH, SOL, DOGE, AVAX). Returns (trades_placed, trades_sold)."""
+    core_set    = set(CRYPTO_WATCHLIST)
+    core_crypto = {s: p for s, p in positions.items() if s in core_set}
 
     trades_sold = 0
     for t in risk.check_all_stop_take(core_crypto,
@@ -233,7 +231,7 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
 
-    core_crypto = {s: p for s, p in positions.items() if "/" in s and s not in excl}
+    core_crypto = {s: p for s, p in positions.items() if s in core_set}
 
     trades_placed = 0
     for alpaca_sym in CRYPTO_WATCHLIST:
@@ -300,7 +298,7 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             trades_placed += 1
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
-            core_crypto = {s: p for s, p in positions.items() if "/" in s and s not in excl}
+            core_crypto = {s: p for s, p in positions.items() if s in core_set}
             telegram.trade_alert(alpaca_sym, decision.action, qty_for_alert,
                                   decision.confidence, decision.rationale, account["cash"],
                                   price=technical.current_price,
@@ -344,7 +342,7 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
     else:
         stock_universe = []  # no point scanning stocks when market is closed
 
-    crypto_universe = [s for s in MOMENTUM_CRYPTO_UNIVERSE if s not in core_syms]
+    crypto_universe = get_momentum_crypto_candidates(exclude=core_syms)
     all_universe    = stock_universe + crypto_universe
     universe_set    = set(all_universe)
 

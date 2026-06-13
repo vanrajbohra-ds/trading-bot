@@ -12,8 +12,8 @@ flowchart TD
     GH --> MAIN["main.py"]
 
     MAIN -->|"Market hours"| SC["Stock Cycle\nAAPL / TSLA / NVDA / MSFT / AMZN"]
-    MAIN -->|"24/7"| CC["Crypto Cycle\nSOL/USD"]
-    MAIN -->|"Market hours"| MC["Momentum Cycle\nLive Yahoo screener"]
+    MAIN -->|"24/7"| CC["Crypto Cycle\nETH / SOL / DOGE / AVAX"]
+    MAIN -->|"Stocks: market hours\nCrypto: 24/7"| MC["Momentum Cycle\nStocks: Yahoo Finance screeners\nCrypto: CoinGecko top-100"]
 
     SC --> FA["Fundamental Agent\nP/E · EPS · Analyst rating\nNews headlines · Insider trades"]
     CC --> FA
@@ -70,26 +70,31 @@ pie title Portfolio Target Allocation
 |---|---|---|
 | 🔒 Cash Reserve | **20%** always locked | Unlocks at confidence ≥ 88% (up to 50% of reserve per trade) |
 | 📈 Core Stocks | Up to 65% investable pool | Max 5 positions · −7% stop / +15% take |
-| 🔗 Core Crypto | Max 35% of total portfolio | SOL/USD only · −12% stop / +25% take |
-| 🚀 Momentum | **10%** shared budget | Live-discovered stocks + DOGE/AVAX/LINK/UNI · −4%/+8% stops |
+| 🔗 Core Crypto | Max 35% of total portfolio | ETH / SOL / DOGE / AVAX · −12% stop / +25% take · max 3 positions |
+| 🚀 Momentum | **10%** shared budget | Live-discovered stocks (Yahoo) + crypto (CoinGecko) · −4%/+8% stops |
 
 ---
 
 ## Momentum Discovery Pipeline
 
+Both stocks and crypto are discovered dynamically every cycle — no hardcoded ticker lists.
+
 ```mermaid
-flowchart LR
-    YF["Yahoo Finance Screeners"]
+flowchart TD
+    YF["Yahoo Finance\nScreeners — market hours only"]
+    CG["CoinGecko\nTop-100 coins by 24h volume — 24/7"]
 
-    YF -->|"most actives"| A["Most Active by Volume"]
-    YF -->|"top gainers"| B["Top Day Gainers"]
+    YF -->|"most actives"| SA["Most Active Stocks by Volume"]
+    YF -->|"top gainers"| SB["Top Day Gainers"]
+    CG -->|"filter to Alpaca-tradeable"| CA["Crypto Candidates\nScore: 24h change x vol/mcap ratio"]
 
-    A --> DEDUP["Deduplicate and Filter\nno ETFs, no penny stocks under 2 USD"]
-    B --> DEDUP
+    SA --> DEDUP["Deduplicate and Filter\nno ETFs, no penny stocks under 2 USD\nexclude core watchlist symbols"]
+    SB --> DEDUP
+    CA --> DEDUP
 
-    DEDUP --> PRE["Technical Pre-filter — FREE, no LLM\nvolume 1.8x avg AND RSI 55-75 AND MACD hist positive\nPass 2 of 3 checks to proceed"]
+    DEDUP --> PRE["Technical Pre-filter — no LLM\nvolume 1.8x avg AND RSI 55-75 AND MACD hist positive\nPass 2 of 3 checks to proceed"]
 
-    PRE -->|"2-4 candidates survive"| LLM["Decision Agent\nLLM call only on pre-filtered candidates\n90 percent API call savings"]
+    PRE -->|"2-4 candidates survive"| LLM["Decision Agent\nLLM call only on pre-filtered candidates"]
     PRE -->|"fail"| SKIP["Skip — no LLM call"]
 
     LLM -->|"conf 80+"| BUY["BUY momentum position"]
@@ -156,13 +161,15 @@ flowchart TD
 ### Core Crypto (fixed — runs 24/7)
 | Symbol | Asset | Stop | Target |
 |--------|-------|------|--------|
+| ETH/USD | Ethereum | −12% | +25% |
 | SOL/USD | Solana | −12% | +25% |
+| DOGE/USD | Dogecoin | −12% | +25% |
+| AVAX/USD | Avalanche | −12% | +25% |
 
-> **Note:** BTC/USD was removed — Alpaca paper trading accepts BTC orders but never fills them (65 cancelled orders, 0 filled). The dedup guard now also blocks any symbol with a recently-cancelled buy for 90 minutes, preventing infinite retry loops.
+> **Note:** BTC/USD is excluded — Alpaca paper trading accepts BTC orders but never fills them (65 cancelled orders, 0 filled). The dedup guard blocks any symbol with a recently-cancelled buy for 90 minutes, preventing infinite retry loops.
 
-### Momentum Crypto Universe
-`DOGE/USD` · `AVAX/USD` · `LINK/USD` · `UNI/USD` — fixed to the most liquid volatile coins on Alpaca.
-Exits: −6% stop / +12% take.
+### Momentum Crypto (dynamic — via CoinGecko)
+No hardcoded list. Every cycle the bot queries CoinGecko's top 100 coins by 24h volume, filters to Alpaca-tradeable symbols, scores each by `24h_change × (1 + volume/marketcap_ratio × 10)`, and picks the top 3 positive-momentum candidates. Exits: −6% stop / +12% take.
 
 ---
 
@@ -233,7 +240,8 @@ trading_bot/
 │   │                         #   get_recent_buy_symbols()    dedup guard (15 min / 90 min)
 │   │                         #   cancel_stale_open_orders()  kills stuck GTC crypto orders
 │   ├── risk_manager.py       # Stop-loss, take-profit, position sizing, cash reserve
-│   ├── market_scanner.py     # Yahoo Finance screeners (most_actives + day_gainers)
+│   ├── market_scanner.py     # Stock discovery: Yahoo screeners (most_actives + day_gainers)
+│   │                         # Crypto discovery: CoinGecko top-100, scored by momentum
 │   └── telegram_notifier.py  # Trade alerts, risk exits, EOD summary, heartbeat
 │
 ├── dashboard/
@@ -345,11 +353,11 @@ python3 main.py --daemon   # runs every 60 sec during market hours
 ```python
 # Core watchlists
 WATCHLIST        = ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN"]
-CRYPTO_WATCHLIST = ["SOL/USD"]          # BTC/USD removed — never fills on paper trading
+CRYPTO_WATCHLIST = ["ETH/USD", "SOL/USD", "DOGE/USD", "AVAX/USD"]  # BTC excluded — never fills
 
 # Position limits
 MAX_POSITIONS        = 5
-MAX_CRYPTO_POSITIONS = 2
+MAX_CRYPTO_POSITIONS = 3
 CRYPTO_PORTFOLIO_CAP = 0.35             # max 35% of portfolio in crypto
 
 # Core exits
@@ -446,6 +454,8 @@ This bot was designed by studying the architectures and research behind several 
 | Source | Used For |
 |---|---|
 | [Yahoo Finance (yfinance)](https://github.com/ranaroussi/yfinance) | Stock + crypto prices, fundamentals (P/E, EPS, growth, analyst ratings), news headlines, insider transactions, technical history |
+| [Yahoo Finance Screeners](https://finance.yahoo.com/screener) | Momentum stock discovery — `most_actives` and `day_gainers` screeners surface what's actually moving each cycle |
+| [CoinGecko API](https://www.coingecko.com/en/api) | Momentum crypto discovery — top 100 coins by 24h volume, scored by price change × volume/market-cap ratio |
 | [Alpaca Paper Trading API](https://alpaca.markets) | Order execution, position tracking, account state, portfolio history |
 | [SPY via yfinance](https://finance.yahoo.com/quote/SPY) | Market regime detection — BULL when SPY > SMA20, BEAR when below |
 

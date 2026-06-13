@@ -14,27 +14,36 @@ POSITION_SIZE_BANDS = [
 ]
 
 # ── Core Crypto ───────────────────────────────────────────────────────────────
-CRYPTO_WATCHLIST = ["SOL/USD"]  # BTC/USD removed — never fills on paper trading (65 cancelled orders, 0 filled)
+# Top market-cap cryptos traded 24/7 — BTC excluded (never fills on paper trading)
+CRYPTO_WATCHLIST = ["ETH/USD", "SOL/USD", "DOGE/USD", "AVAX/USD"]
 CRYPTO_YFINANCE_MAP = {
     "BTC/USD":  "BTC-USD",
+    "ETH/USD":  "ETH-USD",
     "SOL/USD":  "SOL-USD",
     "DOGE/USD": "DOGE-USD",
     "AVAX/USD": "AVAX-USD",
+    "LTC/USD":  "LTC-USD",
+    "BCH/USD":  "BCH-USD",
     "LINK/USD": "LINK-USD",
     "UNI/USD":  "UNI-USD",
+    "AAVE/USD": "AAVE-USD",
+    "GRT/USD":  "GRT-USD",
+    "MKR/USD":  "MKR-USD",
+    "XLM/USD":  "XLM-USD",
+    "XTZ/USD":  "XTZ-USD",
+    "BAT/USD":  "BAT-USD",
+    "SHIB/USD": "SHIB-USD",
 }
-MAX_CRYPTO_POSITIONS   = 2
+MAX_CRYPTO_POSITIONS   = 3      # increased to match 4-coin core watchlist
 CRYPTO_STOP_LOSS_PCT   = 0.12
 CRYPTO_TAKE_PROFIT_PCT = 0.25
 CRYPTO_PORTFOLIO_CAP   = 0.35   # max 35% of total portfolio value in crypto (core + momentum)
 
 # ── Momentum / Speculative Tier ───────────────────────────────────────────────
-# The bot discovers high-momentum stocks LIVE each cycle using Yahoo Finance
-# screeners (most active by volume + top day gainers). No hardcoded list —
-# the system hunts wherever the market is actually moving today.
-#
-# Crypto momentum universe is fixed (only a few volatile coins on Alpaca).
-MOMENTUM_CRYPTO_UNIVERSE = ["DOGE/USD", "AVAX/USD", "LINK/USD", "UNI/USD"]
+# Stocks: discovered LIVE via Yahoo Finance screeners (most-active + top-gainers).
+# Crypto: discovered LIVE via CoinGecko top-100 by volume — no hardcoded universe.
+#         get_momentum_crypto_candidates() picks whichever Alpaca-tradeable coins
+#         are actually surging today, based on 24h change × volume/market-cap ratio.
 
 # How many results to pull from each Yahoo Finance screener per cycle.
 # actives + gainers are combined → up to 2× this many stock candidates.
