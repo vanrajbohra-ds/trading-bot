@@ -38,110 +38,67 @@ flowchart TD
 
 ## Component Architecture
 
-All source files and their data flows, grouped by layer.
+End-to-end process flow — from raw data sources through AI analysis to trade execution and alerts.
 
 ```mermaid
-flowchart TB
-    subgraph TRIG["Trigger Layer"]
-        CRON2["cron-job.org"]
-        GHA[".github/workflows/trading_bot.yml\nGitHub Actions"]
-        CRON2 -->|POST workflow_dispatch| GHA
+flowchart LR
+    subgraph SRC["Data Sources"]
+        YF["Yahoo Finance\nPrice history, fundamentals\nAnalyst ratings, insider trades\nNews headlines"]
+        HF["HuggingFace\nNews sentiment model"]
+        CG["CoinGecko\nCrypto market data\nTop-100 by volume"]
+        SCRN["Yahoo Screeners\nDay gainers, momentum stocks"]
+        SPYVIX["SPY and VIX\nMarket regime data"]
     end
 
-    subgraph CFG["Config Layer"]
-        CONFIG["config.py\nWatchlist, risk params, constants"]
-        WL["watchlist.json\nDynamic tickers"]
-        MAIN2["main.py\nEntry point - single cycle"]
-        CONFIG --> MAIN2
-        WL --> MAIN2
+    subgraph ANALYSIS["AI Analysis"]
+        FA["Fundamental Agent\nP/E, EPS, revenue growth\nAnalyst ratings, sentiment\nInsider activity"]
+        TA["Technical Agent\nRSI, MACD, Bollinger Bands\nSMA 50 and 200, OBV\nVolume ratio, golden cross"]
+        SCAN["Market Scanner\nMomentum picks from\nscreeners and CoinGecko"]
+        MACRO["Macro Context\nSPY BULL/BEAR regime\nVIX fear level\nPortfolio drawdown"]
     end
 
-    GHA --> MAIN2
-
-    subgraph ORCH["Orchestrator - orchestrator.py"]
-        SC2["Stock Cycle\nAAPL TSLA NVDA MSFT AMZN"]
-        CC2["Crypto Cycle\nETH SOL DOGE AVAX"]
-        MC2["Momentum Cycle\nDynamic screener picks"]
-        MACRO2["Macro Context\nSPY regime, VIX, drawdown"]
+    subgraph LLM["LLM Decision Engine"]
+        DA["Decision Agent\nBull vs Bear debate\nWeighs all signals"]
+        CB["1. Cerebras\ngpt-oss-120b - fastest"]
+        GR["2. Groq\nllama-3.3-70b"]
+        GE["3. Gemini\ngemini-2.0-flash"]
+        OR["4. OpenRouter\nllama-3.3-70b - last resort"]
+        DA --> CB
+        CB -->|rate limit| GR
+        GR -->|rate limit| GE
+        GE -->|rate limit| OR
     end
 
-    MAIN2 --> SC2
-    MAIN2 --> CC2
-    MAIN2 --> MC2
-    MAIN2 --> MACRO2
+    RM["Risk Manager\nConfidence filter - min 70 pct\nPosition sizing by confidence band\nStop-loss and take-profit sweep"]
 
-    subgraph SCAN["Scanner - market_scanner.py"]
-        YSC["Yahoo Finance Screeners\nDay gainers, momentum"]
-        CGC["CoinGecko API\nTop-100 crypto by volume"]
+    subgraph OUT["Outputs"]
+        ALP["Alpaca Paper Trading\nBUY and SELL order execution\nReal-time positions and history"]
+        TG["Telegram Bot\nTrade alerts with P/L\nHourly heartbeat, EOD summary"]
+        DASH["Streamlit Dashboard\n7 tabs - live portfolio\nExplore any stock or crypto"]
     end
 
-    MC2 --> YSC
-    MC2 --> CGC
+    YF --> FA
+    YF --> TA
+    HF --> FA
+    CG --> FA
+    CG --> SCAN
+    SCRN --> SCAN
+    SPYVIX --> MACRO
 
-    subgraph AGTS["Agents Layer"]
-        FA2["fundamental_agent.py\nP/E, EPS, revenue growth\nanalyst ratings, insider trades"]
-        TA2["technical_agent.py\nRSI, MACD, Bollinger Bands\nSMA50/200, OBV, volume ratio"]
-        DECA["decision_agent.py\nBull vs Bear debate\nBUY/SELL/HOLD + confidence"]
-    end
+    FA --> DA
+    TA --> DA
+    SCAN --> DA
+    MACRO --> DA
 
-    subgraph DATA["External Data"]
-        YF["yfinance\nOHLCV, fundamentals, news"]
-        CGAPI["CoinGecko REST\ncrypto market data"]
-        HF["HuggingFace\nsentiment model"]
-        LLM["LLM Providers\nCerebras, Groq, Gemini, OpenRouter"]
-    end
+    CB --> RM
+    GR --> RM
+    GE --> RM
+    OR --> RM
 
-    SC2 --> FA2
-    CC2 --> FA2
-    MC2 --> FA2
-    SC2 --> TA2
-    CC2 --> TA2
-    MC2 --> TA2
-
-    FA2 --> YF
-    FA2 --> CGAPI
-    FA2 --> HF
-    TA2 --> YF
-
-    FA2 --> DECA
-    TA2 --> DECA
-    MACRO2 --> DECA
-    DECA --> LLM
-
-    subgraph EXEC["Execution Layer"]
-        RM2["risk_manager.py\nPosition sizing, stop/take-profit"]
-        ALP2["alpaca_client.py\nOrder submission, account info"]
-        TGN["telegram_notifier.py\nTrade alerts, heartbeat, EOD"]
-    end
-
-    DECA --> RM2
-    RM2 --> ALP2
-    RM2 --> TGN
-
-    subgraph APA["Alpaca Paper API"]
-        ORD["Orders"]
-        POS["Positions"]
-        HIST["Trade History"]
-    end
-
-    ALP2 --> ORD
-    ALP2 --> POS
-    ALP2 --> HIST
-
-    subgraph DSH["Dashboard - dashboard/app.py"]
-        T1["Overview tab\nP/L, metrics"]
-        T2["Positions tab\nOpen holdings"]
-        T3["Momentum tab\nScreener picks"]
-        T4["History tab\nPast trades"]
-        T5["Reports tab\nAgent analysis"]
-        T6["Prices tab\nLive quotes"]
-        T7["Explore tab\nOn-demand analysis"]
-    end
-
-    POS --> DSH
-    HIST --> DSH
-    YF --> T7
-    LLM --> T5
+    RM --> ALP
+    RM --> TG
+    ALP --> DASH
+    TG --> DASH
 ```
 
 ---
