@@ -250,8 +250,9 @@ trading_bot/
 │   └── telegram_notifier.py  # Trade alerts, risk exits, EOD summary, heartbeat
 │
 ├── dashboard/
-│   └── app.py              # Streamlit — 6-tab layout, auto-refreshes every 10s
+│   └── app.py              # Streamlit — 7-tab layout, auto-refreshes every 10s
 │                           #   Overview · Positions · Momentum · History · Reports · Prices
+│                           #   Explore — on-demand analysis of any symbol (rule-based scoring)
 │
 ├── .github/workflows/
 │   └── trading_bot.yml     # GitHub Actions — triggered by cron-job.org every 2 min
@@ -268,19 +269,20 @@ trading_bot/
 Live at **[trading-bot-test.streamlit.app](https://trading-bot-test.streamlit.app)** — auto-deploys on every push to `main`.
 
 ```
-┌─ 8 KPI Metrics ──────────────────────────────────────────────────────────┐
-│  Portfolio │ Cash │ Total P&L │ Positions │ Win Rate │ PF │ Weekly │ Mom │
-├───────────────────────────────────────────────────────────────────────────┤
-│ [📊 Overview] [💼 Positions] [🚀 Momentum] [📜 History] [📋 Reports]      │
-│ [📡 Prices]                                                               │
-│                                                                           │
-│  Overview   Performance chart + Allocation pie + P&L bar                 │
-│  Positions  Merged table (stocks + crypto) with stop/target cols         │
-│  Momentum   Budget strip → Live Screener │ Signal Filter │ Trades        │
-│  History    Trade log — filter: All / Stocks / Crypto                    │
-│  Reports    Realized P&L · filters: Side / Range / Type (By Day or Flat) │
-│  Prices     Live price tiles (stocks + crypto) + performance stats       │
-└───────────────────────────────────────────────────────────────────────────┘
+┌─ 8 KPI Metrics ──────────────────────────────────────────────────────────────┐
+│  Portfolio │ Cash │ Total P&L │ Positions │ Win Rate │ PF │ Weekly │ Mom Used │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ [📊 Overview] [💼 Positions] [🚀 Momentum] [📜 History] [📋 Reports]         │
+│ [📡 Prices]   [🔍 Explore]                                                    │
+│                                                                               │
+│  Overview   Performance chart + Allocation pie + Unrealized P&L bar          │
+│  Positions  Merged table (stocks + crypto) with stop/target distance cols     │
+│  Momentum   Budget strip → Live Screener │ Signal Filter │ Momentum Trades    │
+│  History    Trade log — filter: All / Stocks / Crypto                         │
+│  Reports    Realized P&L · filters: Side / Range / Type (By Day or Flat)      │
+│  Prices     Live price tiles (stocks + 16 crypto pairs) + performance stats   │
+│  Explore    On-demand full analysis of any stock or crypto symbol (see below) │
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Run locally:
@@ -288,39 +290,115 @@ Run locally:
 streamlit run dashboard/app.py
 ```
 
+### 🔍 Explore Tab
+
+Enter any stock ticker (`NVDA`, `SMCI`, `AAPL`) or crypto (`ETH/USD`, `DOGE`, `SOL`) and get the same analysis the bot runs before every trade — without placing an order.
+
+```
+┌─ Verdict ────────────────────────────────────────────────────────────────────┐
+│  📈 BUY   Combined score: 71/100   Tech 74 | Fund 68   NVDA · $875.20        │
+├─ Market Context ──────────────────────────────────────────────────────────────┤
+│  🌐 Regime: BULL   📊 SPY: +0.54% today   😨 VIX: 17.7 — Calm               │
+├─ Chart (left 58%) ──────────────┬─ Signals (right 42%) ──────────────────────┤
+│                                  │ 📊 Technical — 74/100                      │
+│  Price line + Bollinger Bands    │  ✅ RSI 38.2 — approaching oversold        │
+│  SMA 20 + SMA 50 overlaid        │  ✅ MACD histogram +0.48 — bullish         │
+│                                  │  🟡 Volume 1.2× avg — above average        │
+│  RSI (14) sub-chart below        │  ✅ Golden Cross — long-term uptrend        │
+│  overbought/oversold shading     │  🟡 Mid Bollinger Band (52%)               │
+│                                  │  ✅ OBV Rising — accumulation               │
+│                                  │──────────────────────────────────────────  │
+│                                  │ 🏢 Fundamental — 68/100                    │
+│                                  │  ✅ Analyst consensus: Strong Buy           │
+│                                  │  ✅ Price target $298 (+43% upside)         │
+│                                  │  ✅ Revenue growth +85% YoY                 │
+│                                  │  🟡 P/E 35.2× — growth premium             │
+│                                  │  ✅ Put/Call 0.65 — bullish positioning     │
+├─ Insider Activity ────────────────────────────────────────────────────────────┤
+│  🔴 Sale at $875 — STEVENS M (Officer) 100,000 shares on 2026-06-04          │
+├─ ▶ Recent News (8 headlines) ─────────────────────────────────────────────────┤
+│  Click to expand                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+**How scoring works:**
+
+| Signal | Bullish → score | Bearish → score |
+|---|---|---|
+| RSI < 30 (oversold) | +20 pts | RSI > 70 (overbought): 0 pts |
+| MACD histogram > 0 | +20 pts | MACD histogram ≤ 0: 0 pts |
+| Volume ≥ 1.8× avg | +15 pts | Volume < 0.7×: +2 pts |
+| Golden Cross | +20 pts | Death Cross: 0 pts |
+| Near lower Bollinger Band | +15 pts | Near upper: +3 pts |
+| OBV Rising | +10 pts | OBV Falling: 0 pts |
+| Analyst Strong Buy (stocks) | +25 pts | Sell/Underperform: +2 pts |
+| Revenue growth > 20% (stocks) | +15 pts | Revenue declining: 0 pts |
+| 52W range < 20% from low (crypto) | +30 pts | Near 52W high: +2 pts |
+| Sentiment BULLISH | +20 pts | BEARISH: 0 pts |
+
+Combined score ≥ 68 → **BUY** · 48–67 → **HOLD / WATCH** · < 48 → **AVOID / SELL**
+
+Technical signals are computed from 1-year OHLCV price data (RSI, MACD, Bollinger %B, volume ratio, OBV trend, golden/death cross). Fundamental data from yfinance (stocks) and CoinGecko (crypto). Scores are rule-based heuristics — not LLM predictions, not financial advice.
+
 ---
 
 ## Telegram Alerts
 
-**Trade Alert:**
+**Trade Alert — BUY (stock):**
 ```
-🟢 TRADE ALERT — BUY NVDA
-Units:      12 shares @ $875.20  |  Cost: $10,502.40
-Confidence: 82%
+🟢 BUY NVDA  ·  82% conf
+────────────────────────
+📈 12 shares @ $875.20  ·  cost $10,502
+💵 Cash: $52,800
 
-📊 RSI 28.4 OVERSOLD · MACD BULLISH · Volume 2.3× avg
-🏢 Strong Buy · target $950 (+8.5%) · Revenue +122%
-💬 RSI oversold + golden cross + analyst upgrades
-Cash left: $52,800.00
+📊 RSI 28.4 OVERSOLD · MACD ▲ · Vol 2.3×avg HIGH
+🏢 Strong Buy · target $950 (+8%) · Rev +122% · Sentiment BULLISH
+
+💬 RSI oversold + golden cross + analyst upgrades outweigh macro headwinds
 ```
 
-**Risk Exit:**
+**Trade Alert — SELL (crypto, showing P&L):**
 ```
-⚠️ RISK EXIT — SELL TSLA (STOP LOSS −7.2%)
-Units: 8
+🔴 SELL DOGE/USD  ·  78% conf
+────────────────────────
+🪙 32,619 units @ $0.0868  ·  value $2,832
+📉 Loss  –$180  (–6.2%)  [entry $0.0924]
+💵 Cash: $72,375
+
+🔗 Sentiment NEUTRAL · 38% into 52W range
+💬 Stop-loss triggered — momentum exhausted below entry
+```
+
+**Risk Exit (stop-loss or take-profit):**
+```
+⚠️ RISK EXIT — AVAX/USD
+🛑 STOP LOSS -12.3%  ·  0.54 units
+📉 –$432 (–12.3%)  [$18.50 → $16.22]
 ```
 
 **Hourly Heartbeat** (no trades that hour):
 ```
-🤖 BOT HEARTBEAT  ·  no trades this hour
-Portfolio: $99,786  ·  Cash: $17,232  ·  P&L: 📉 −$214
+🤖 BOT HEARTBEAT  (no trades this hour)
+────────────────────────────────
+🔴 Stock market CLOSED  ·  🔗 Crypto 24/7
+Portfolio:  $99,786.00
+Cash:       $17,232.00
+Total P&L:  📉 $-214.00
+
+Open Positions:
+  📉 NVDA: 12 shares (-1.2%)
+  📈 ETH/USD: 0.45 units (+3.1%)
 ```
 
 **End-of-Day Summary:**
 ```
 📅 END OF DAY SUMMARY
-Trades: 3 buys  1 sell  ·  Day P&L: 📈 +$234.50
-Portfolio: $100,234.50  ·  Cash: $68,120.30
+────────────────────────────────
+Trades Today:  3 buys | 1 sell
+Day P&L:       📈 +$234.50
+Total P&L:     📈 +$234.50
+Portfolio:     $100,234.50
+Cash:          $68,120.30
 ```
 
 ---
