@@ -87,6 +87,11 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return any(k in msg for k in ("429", "rate limit", "quota", "resource_exhausted", "too many requests"))
 
 
+def _is_missing_key_error(exc: Exception) -> bool:
+    """Return True if the provider's API key is simply not configured — skip, don't abort."""
+    return isinstance(exc, RuntimeError) and str(exc).endswith("not set")
+
+
 def _call_openai_compat(base_url: str, api_key: str, model: str, prompt: str,
                         extra_headers: dict = None, max_tokens: int = 800) -> str:
     """Generic caller for any OpenAI-compatible endpoint (Groq, Cerebras, OpenRouter)."""
@@ -200,7 +205,11 @@ class DecisionAgent:
                     logger.warning(f"[LLM] {provider} rate-limited, trying next provider... ({e})")
                     last_err = e
                     continue
-                raise   # non-429 errors (bad key, network, parse) bubble up immediately
+                if _is_missing_key_error(e):
+                    logger.debug(f"[LLM] {provider} skipped — {e}")
+                    last_err = e
+                    continue
+                raise   # network errors, bad responses, etc. bubble up immediately
         raise RuntimeError(f"All LLM providers exhausted. Last error: {last_err}")
 
     def decide(
@@ -233,6 +242,18 @@ class DecisionAgent:
             "Now run your bull/bear debate for this symbol, then output your trading decision as JSON."
         )
         prompt = "\n\n".join(parts)
+
+        # Log a compact signal summary so GitHub Actions logs show what the LLM sees
+        tech = technical
+        _rsi  = f"{tech.rsi:.1f}"   if getattr(tech, "rsi",         None) is not None else "N/A"
+        _macd = f"{tech.macd_hist:.4f}" if getattr(tech, "macd_hist",  None) is not None else "N/A"
+        _vol  = f"{tech.volume_ratio:.2f}x" if getattr(tech, "volume_ratio", None) is not None else "N/A"
+        _sent = fundamental.news_sentiment_label or "N/A"
+        _rec  = fundamental.analyst_recommendation or "N/A"
+        logger.info(
+            f"[{symbol}] → LLM | RSI={_rsi} MACD={_macd} Vol={_vol} "
+            f"Sentiment={_sent} Analyst={_rec}"
+        )
 
         try:
             raw, provider = self._call_llm_with_failover(prompt)
