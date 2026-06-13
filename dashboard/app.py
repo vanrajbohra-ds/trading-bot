@@ -184,25 +184,133 @@ def _norm_explore_sym(raw: str):
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _fetch_explore_chart(yf_sym: str, is_crypto: bool):
+    """Fetch 1 year of OHLCV and compute all technical indicators."""
     try:
-        df = yf.Ticker(yf_sym).history(period="3mo", interval="1d")
+        df = yf.Ticker(yf_sym).history(period="1y", interval="1d")
         if df is None or df.empty:
             return None
         df.index = pd.to_datetime(df.index).tz_localize(None)
-        df["sma20"] = df["Close"].rolling(20).mean()
-        df["sma50"] = df["Close"].rolling(50).mean()
-        df["bb_mid"]   = df["Close"].rolling(20).mean()
+        # SMAs
+        df["sma20"]  = df["Close"].rolling(20).mean()
+        df["sma50"]  = df["Close"].rolling(50).mean()
+        df["sma200"] = df["Close"].rolling(200).mean()
+        # Bollinger Bands (20, 2)
+        df["bb_mid"]   = df["sma20"]
         _std           = df["Close"].rolling(20).std()
         df["bb_upper"] = df["bb_mid"] + 2 * _std
         df["bb_lower"] = df["bb_mid"] - 2 * _std
-        _delta = df["Close"].diff()
-        _gain  = _delta.clip(lower=0).rolling(14).mean()
-        _loss  = (-_delta.clip(upper=0)).rolling(14).mean()
-        _rs    = _gain / _loss.replace(0, float("nan"))
+        # RSI (14)
+        _d    = df["Close"].diff()
+        _gain = _d.clip(lower=0).rolling(14).mean()
+        _loss = (-_d.clip(upper=0)).rolling(14).mean()
+        _rs   = _gain / _loss.replace(0, float("nan"))
         df["rsi"] = 100 - 100 / (1 + _rs)
+        # MACD (12, 26, 9)
+        _ema12        = df["Close"].ewm(span=12, adjust=False).mean()
+        _ema26        = df["Close"].ewm(span=26, adjust=False).mean()
+        df["macd"]    = _ema12 - _ema26
+        df["macd_sig"]  = df["macd"].ewm(span=9, adjust=False).mean()
+        df["macd_hist"] = df["macd"] - df["macd_sig"]
+        # Volume ratio (5d avg / 20d avg)
+        df["vol_ratio"] = df["Volume"].rolling(5).mean() / df["Volume"].rolling(20).mean()
+        # OBV
+        _obv_delta  = df["Close"].diff().fillna(0)
+        _obv_dir    = _obv_delta.apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+        df["obv"]   = (df["Volume"] * _obv_dir).cumsum()
         return df
     except Exception:
         return None
+
+def _tech_signals_from_df(df):
+    """Extract last-row signal values from chart DataFrame."""
+    if df is None or df.empty:
+        return {}
+    last = df.iloc[-1]
+
+    def _safe(col):
+        v = last.get(col)
+        if v is None: return None
+        try:
+            f = float(v)
+            return None if f != f else f  # NaN guard
+        except Exception:
+            return None
+
+    out = {
+        "rsi":       _safe("rsi"),
+        "macd_hist": _safe("macd_hist"),
+        "vol_ratio": _safe("vol_ratio"),
+    }
+
+    s50, s200 = _safe("sma50"), _safe("sma200")
+    if s50 is not None and s200 is not None:
+        out["golden_cross"] = bool(s50 > s200)
+
+    close, bb_l, bb_u = _safe("Close"), _safe("bb_lower"), _safe("bb_upper")
+    if close is not None and bb_l is not None and bb_u is not None and (bb_u - bb_l) > 0:
+        out["bb_pband"] = (close - bb_l) / (bb_u - bb_l)
+
+    if "obv" in df.columns and len(df) >= 10:
+        r = df["obv"].iloc[-5:].mean()
+        p = df["obv"].iloc[-10:-5].mean()
+        out["obv_trend"] = "RISING" if r > p * 1.005 else ("FALLING" if r < p * 0.995 else "FLAT")
+
+    return out
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _fetch_explore_news(yf_sym: str):
+    """Return list of dicts with dt/title/source/tag for recent headlines."""
+    try:
+        raw = yf.Ticker(yf_sym).news or []
+        out = []
+        for n in raw[:10]:
+            title = n.get("title", "")
+            if not title:
+                continue
+            source = n.get("publisher", "")
+            ts     = n.get("providerPublishTime", 0)
+            dt     = datetime.fromtimestamp(ts).strftime("%b %d") if ts else ""
+            tl     = title.lower()
+            if any(w in tl for w in ("surge", "soar", "beat", "upgrade", "buy", "bullish",
+                                      "rally", "strong", "record", "growth")):
+                tag = "🟢"
+            elif any(w in tl for w in ("drop", "fall", "miss", "downgrade", "sell", "bearish",
+                                        "warning", "probe", "fraud", "decline", "loss", "cut")):
+                tag = "🔴"
+            else:
+                tag = "⚪"
+            out.append({"dt": dt, "title": title, "source": source, "tag": tag})
+        return out
+    except Exception:
+        return []
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_market_context():
+    """Return dict with SPY regime and VIX level."""
+    try:
+        spy = yf.Ticker("SPY").history(period="2mo")
+        if spy.empty:
+            return {}
+        spy_cur   = float(spy["Close"].iloc[-1])
+        spy_sma20 = float(spy["Close"].rolling(20).mean().iloc[-1])
+        spy_chg   = (spy_cur - float(spy["Close"].iloc[-2])) / float(spy["Close"].iloc[-2]) * 100
+
+        vix_df  = yf.Ticker("^VIX").history(period="5d")
+        vix_val = float(vix_df["Close"].iloc[-1]) if not vix_df.empty else None
+        if vix_val:
+            if   vix_val < 15: vix_lbl = "Very Calm"
+            elif vix_val < 20: vix_lbl = "Calm"
+            elif vix_val < 25: vix_lbl = "Moderate"
+            elif vix_val < 30: vix_lbl = "Elevated Fear"
+            else:              vix_lbl = "High Fear"
+        else:
+            vix_lbl = "N/A"
+
+        return {"regime": "BULL" if spy_cur > spy_sma20 else "BEAR",
+                "spy": spy_cur, "spy_chg": spy_chg,
+                "vix": vix_val, "vix_lbl": vix_lbl}
+    except Exception:
+        return {}
 
 def _score_technical(t):
     """Return (score 0-100, [(icon, label), ...])."""
@@ -1036,7 +1144,7 @@ with t_px:
 # EXPLORE
 # ════════════════════════════════════════════════════════════════════════════════
 with t_exp:
-    st.markdown("##### 🔍 Deep-dive any stock or crypto using the same engine as the bot")
+    st.markdown("##### 🔍 Explore — full picture before you decide to buy")
 
     ec1, ec2, _ = st.columns([3, 1, 4])
     raw_input = ec1.text_input(
@@ -1059,164 +1167,203 @@ with t_exp:
     ex_sym = st.session_state.explore_sym
 
     if not ex_sym:
-        st.info("💡 Enter any stock ticker (NVDA, AAPL, TSLA) or crypto (ETH/USD, DOGE, SOL) and click Analyse →")
+        st.info("💡 Enter any stock (NVDA, AAPL, SMCI) or crypto (ETH/USD, DOGE, SOL) and click Analyse →")
     else:
         alpaca_sym, yf_sym, is_crypto = _norm_explore_sym(ex_sym)
 
-        # ── Fetch analysis (cached in session_state between auto-refreshes) ─────
+        # ── Fundamental data (session_state, not re-run on auto-refresh) ──────
         if st.session_state.explore_data_sym != alpaca_sym or st.session_state.explore_data is None:
-            with st.spinner(f"Running full analysis on {alpaca_sym}…"):
+            with st.spinner(f"Fetching fundamental data for {alpaca_sym}…"):
                 try:
                     from agents.fundamental_agent import FundamentalAgent
-                    from agents.technical_agent   import TechnicalAgent
                     _fa   = FundamentalAgent()
-                    _ta   = TechnicalAgent()
                     _fund = _fa.analyze(alpaca_sym, yf_symbol=yf_sym) if is_crypto else _fa.analyze(alpaca_sym)
-                    _tech = _ta.analyze(yf_sym, period="6mo")
-                    _tech.symbol = alpaca_sym
-                    st.session_state.explore_data     = {"fund": _fund, "tech": _tech}
+                    st.session_state.explore_data     = {"fund": _fund}
                     st.session_state.explore_data_sym = alpaca_sym
                 except Exception as _e:
-                    st.error(f"Analysis failed: {_e}")
+                    st.error(f"Fundamental analysis failed: {_e}")
                     st.session_state.explore_data = None
 
         _data = st.session_state.explore_data
         if _data is None:
-            st.warning("Could not load analysis. Check the symbol and try again.")
+            st.warning("Could not load data. Check the symbol spelling and try again.")
         else:
             fund = _data["fund"]
-            tech = _data["tech"]
 
-            if getattr(fund, "fetch_error", None) and getattr(tech, "fetch_error", None):
-                st.error(f"No data found for **{alpaca_sym}**. "
-                         "Stocks: use the ticker (NVDA). Crypto: use ETH/USD or just ETH.")
-            else:
-                tech_score, tech_sigs = _score_technical(tech)
-                fund_score, fund_sigs = _score_fundamental(fund)
-                verdict, v_color, v_icon, combined = _explore_verdict(tech_score, fund_score)
+            # ── Technical signals from chart df (always reliable) ─────────────
+            _df = _fetch_explore_chart(yf_sym, is_crypto)   # cached 2 min
+            _cs = _tech_signals_from_df(_df)
+            from types import SimpleNamespace as _NS
+            _tns = _NS(
+                rsi          = _cs.get("rsi"),
+                macd_hist    = _cs.get("macd_hist"),
+                volume_ratio = _cs.get("vol_ratio"),
+                golden_cross = _cs.get("golden_cross"),
+                bb_pband     = _cs.get("bb_pband"),
+                obv_trend    = _cs.get("obv_trend"),
+            )
 
-                # ── Verdict banner ────────────────────────────────────────
-                cp = getattr(tech, "current_price", None) or getattr(fund, "current_price", None)
-                cp_str = (f"${cp:,.4f}" if cp and cp < 10 else (f"${cp:,.2f}" if cp else "N/A"))
+            tech_score, tech_sigs = _score_technical(_tns)
+            fund_score, fund_sigs = _score_fundamental(fund)
+            verdict, v_color, v_icon, combined = _explore_verdict(tech_score, fund_score)
+
+            # ── Current price ─────────────────────────────────────────────────
+            _cp = (_df["Close"].iloc[-1] if _df is not None and not _df.empty
+                   else getattr(fund, "current_price", None))
+            _cp_str = (f"${_cp:,.4f}" if _cp and _cp < 10 else (f"${_cp:,.2f}" if _cp else "N/A"))
+
+            # ── Verdict banner ────────────────────────────────────────────────
+            st.markdown(
+                f"<div style='background:rgba(0,0,0,0.25);border:1px solid {v_color}44;"
+                f"border-left:4px solid {v_color};border-radius:8px;"
+                f"padding:12px 20px;margin-bottom:8px;display:flex;align-items:center;gap:24px'>"
+                f"<span style='font-size:1.5rem;font-weight:700;color:{v_color}'>{v_icon}&nbsp;{verdict}</span>"
+                f"<span style='color:#ccc'>Score&nbsp;<b style='color:{v_color}'>{combined}/100</b>"
+                f"&ensp;|&ensp;Tech&nbsp;<b>{tech_score}</b>"
+                f"&ensp;|&ensp;Fund&nbsp;<b>{fund_score}</b></span>"
+                f"<span style='color:#888;font-size:.88rem;margin-left:auto'>{alpaca_sym} &middot; {_cp_str}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            # ── Market context bar ────────────────────────────────────────────
+            _mkt = _fetch_market_context()
+            if _mkt:
+                _r = _mkt.get("regime", "")
+                _rc = "#00c853" if _r == "BULL" else "#ff1744"
+                _vix = _mkt.get("vix")
+                _vc  = ("#ff1744" if (_vix or 0) > 25
+                        else ("#ff9800" if (_vix or 0) > 18 else "#00c853"))
+                _spy_chg = _mkt.get("spy_chg", 0)
+                _spy_c   = "#00c853" if _spy_chg >= 0 else "#ff1744"
                 st.markdown(
-                    f"<div style='background:rgba(0,0,0,0.25);border:1px solid {v_color}44;"
-                    f"border-left:4px solid {v_color};border-radius:8px;"
-                    f"padding:14px 20px;margin-bottom:10px'>"
-                    f"<span style='font-size:1.55rem;font-weight:700;color:{v_color}'>"
-                    f"{v_icon}&nbsp;{verdict}</span>"
-                    f"&ensp;<span style='font-size:1rem;color:#ccc'>Combined score: "
-                    f"<b style='color:{v_color}'>{combined}/100</b></span>"
-                    f"&ensp;<span style='color:#888;font-size:.88rem'>"
-                    f"{alpaca_sym} &middot; {cp_str}</span></div>",
+                    f"<div style='background:rgba(255,255,255,0.04);border-radius:6px;"
+                    f"padding:7px 16px;font-size:.83rem;margin-bottom:10px;"
+                    f"display:flex;gap:28px;align-items:center'>"
+                    f"<span>🌐 Market Regime: <b style='color:{_rc}'>{_r}</b></span>"
+                    f"<span>📊 SPY: <b style='color:{_spy_c}'>{_spy_chg:+.2f}%</b> today</span>"
+                    f"<span>😨 VIX: <b style='color:{_vc}'>{_vix:.1f}</b> — {_mkt.get('vix_lbl','')}</span>"
+                    f"<span style='color:#666;font-size:.78rem'>Technical signals are based on historical price data only — past performance does not predict future returns</span>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
 
-                # ── KPI strip ─────────────────────────────────────────────
-                _rec = getattr(fund, "analyst_recommendation", None)
-                _rec_str = _rec.replace("_", " ").title() if _rec else "N/A"
-                k1, k2, k3, k4, k5 = st.columns(5)
-                k1.metric("Technical Score",    f"{tech_score}/100")
-                k2.metric("Fundamental Score",  f"{fund_score}/100")
-                k3.metric("RSI",                f"{tech.rsi:.1f}" if tech.rsi else "N/A")
-                k4.metric("Analyst",            _rec_str if not is_crypto else "N/A (crypto)")
-                k5.metric("Sentiment",          fund.news_sentiment_label or "N/A")
+            # ── Main layout: chart left │ signals right ───────────────────────
+            _chart_col, _sig_col = st.columns([6, 4], gap="medium")
 
-                # ── Price chart ───────────────────────────────────────────
-                _df = _fetch_explore_chart(yf_sym, is_crypto)
-                if _df is not None and not _df.empty:
+            with _chart_col:
+                # Show last 3 months visually (1-year df used for indicator accuracy)
+                _df_view = _df.iloc[-63:] if _df is not None and len(_df) > 63 else _df
+                if _df_view is not None and not _df_view.empty:
                     _fig = make_subplots(
-                        rows=2, cols=1, row_heights=[0.72, 0.28],
-                        shared_xaxes=True, vertical_spacing=0.04,
-                        subplot_titles=("", "RSI (14)"),
+                        rows=2, cols=1, row_heights=[0.70, 0.30],
+                        shared_xaxes=True, vertical_spacing=0.03,
+                        subplot_titles=("Price · 3 months", "RSI (14)"),
                     )
-                    # Bollinger Band fill
                     _fig.add_trace(go.Scatter(
-                        x=_df.index, y=_df["bb_upper"],
+                        x=_df_view.index, y=_df_view["bb_upper"],
                         line=dict(color="rgba(144,202,249,0.15)", width=1),
-                        name="BB Upper", showlegend=False), row=1, col=1)
+                        name="BB", showlegend=True), row=1, col=1)
                     _fig.add_trace(go.Scatter(
-                        x=_df.index, y=_df["bb_lower"],
-                        fill="tonexty", fillcolor="rgba(144,202,249,0.07)",
+                        x=_df_view.index, y=_df_view["bb_lower"],
+                        fill="tonexty", fillcolor="rgba(144,202,249,0.06)",
                         line=dict(color="rgba(144,202,249,0.15)", width=1),
-                        name="Bollinger Bands"), row=1, col=1)
-                    # Price line
+                        name="BB lower", showlegend=False), row=1, col=1)
                     _fig.add_trace(go.Scatter(
-                        x=_df.index, y=_df["Close"],
+                        x=_df_view.index, y=_df_view["Close"],
                         line=dict(color=v_color, width=2), name="Price",
-                        hovertemplate="%{y:$,.4f}<extra></extra>" if is_crypto else "%{y:$,.2f}<extra></extra>"),
-                        row=1, col=1)
-                    # SMAs
+                        hovertemplate="%{y:$,.4f}<extra></extra>" if is_crypto
+                                      else "%{y:$,.2f}<extra></extra>"), row=1, col=1)
                     _fig.add_trace(go.Scatter(
-                        x=_df.index, y=_df["sma20"],
-                        line=dict(color="#ff9800", width=1.2, dash="dot"), name="SMA 20"), row=1, col=1)
-                    if _df["sma50"].notna().any():
+                        x=_df_view.index, y=_df_view["sma20"],
+                        line=dict(color="#ff9800", width=1, dash="dot"), name="SMA20"), row=1, col=1)
+                    if _df_view["sma50"].notna().any():
                         _fig.add_trace(go.Scatter(
-                            x=_df.index, y=_df["sma50"],
-                            line=dict(color="#e91e63", width=1.2, dash="dot"), name="SMA 50"), row=1, col=1)
-                    # RSI
+                            x=_df_view.index, y=_df_view["sma50"],
+                            line=dict(color="#e91e63", width=1, dash="dot"), name="SMA50"), row=1, col=1)
                     _fig.add_trace(go.Scatter(
-                        x=_df.index, y=_df["rsi"],
+                        x=_df_view.index, y=_df_view["rsi"],
                         line=dict(color="#b0bec5", width=1.5), name="RSI",
                         hovertemplate="RSI %{y:.1f}<extra></extra>"), row=2, col=1)
-                    _fig.add_hrect(y0=70, y1=100, fillcolor="rgba(255,23,68,0.07)",
+                    _fig.add_hrect(y0=70, y1=100, fillcolor="rgba(255,23,68,0.06)",
                                    line_width=0, row=2, col=1)
-                    _fig.add_hrect(y0=0,  y1=30,  fillcolor="rgba(0,200,83,0.07)",
+                    _fig.add_hrect(y0=0,  y1=30,  fillcolor="rgba(0,200,83,0.06)",
                                    line_width=0, row=2, col=1)
                     _fig.add_hline(y=70, line_dash="dot",
-                                   line_color="rgba(255,100,100,0.4)", row=2, col=1)
+                                   line_color="rgba(255,100,100,0.35)", row=2, col=1)
                     _fig.add_hline(y=30, line_dash="dot",
-                                   line_color="rgba(100,255,100,0.4)", row=2, col=1)
+                                   line_color="rgba(100,255,100,0.35)", row=2, col=1)
                     _fig.update_layout(
-                        height=380, hovermode="x unified",
+                        height=340, hovermode="x unified",
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(l=0, r=0, t=20, b=0),
+                        margin=dict(l=0, r=0, t=28, b=0),
                         xaxis=dict(showgrid=False, color="white"),
                         xaxis2=dict(showgrid=False, color="white"),
-                        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)",
+                        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
                                    color="white",
                                    tickformat="$,.4f" if is_crypto else "$,.2f"),
-                        yaxis2=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)",
+                        yaxis2=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
                                     color="white", range=[0, 100]),
-                        legend=dict(font=dict(color="white", size=10),
-                                    orientation="h", yanchor="bottom", y=1.01),
+                        legend=dict(font=dict(color="white", size=9),
+                                    orientation="h", yanchor="bottom", y=1.01,
+                                    xanchor="left", x=0),
                         font=dict(color="white"),
                     )
-                    _fig.update_annotations(font=dict(color="#888", size=11))
+                    _fig.update_annotations(font=dict(color="#777", size=10))
                     st.plotly_chart(_fig, use_container_width=True)
+                else:
+                    st.warning("Chart data unavailable for this symbol.")
 
-                # ── Signal breakdown (two columns) ────────────────────────
-                tc, fc = st.columns(2)
-                with tc:
-                    st.markdown(f"**📊 Technical — {tech_score}/100**")
-                    for _icon, _lbl in tech_sigs:
-                        st.markdown(f"{_icon}&nbsp; {_lbl}")
-                with fc:
-                    _f_icon = "🔗" if is_crypto else "🏢"
-                    st.markdown(f"**{_f_icon} Fundamental — {fund_score}/100**")
-                    for _icon, _lbl in fund_sigs:
-                        st.markdown(f"{_icon}&nbsp; {_lbl}")
+            with _sig_col:
+                st.markdown(f"**📊 Technical — {tech_score}/100**")
+                if tech_sigs:
+                    for _ico, _lbl in tech_sigs:
+                        st.markdown(f"<span style='font-size:.85rem'>{_ico}&nbsp;{_lbl}</span>",
+                                    unsafe_allow_html=True)
+                else:
+                    st.caption("No technical data available")
 
-                # ── News headlines ────────────────────────────────────────
-                _news = getattr(fund, "recent_news", None) or []
-                if _news:
+                st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
+                _f_ico = "🔗" if is_crypto else "🏢"
+                st.markdown(f"**{_f_ico} Fundamental — {fund_score}/100**")
+                if fund_sigs:
+                    for _ico, _lbl in fund_sigs:
+                        st.markdown(f"<span style='font-size:.85rem'>{_ico}&nbsp;{_lbl}</span>",
+                                    unsafe_allow_html=True)
+                else:
+                    st.caption("No fundamental data available")
+
+            # ── News ──────────────────────────────────────────────────────────
+            _news = _fetch_explore_news(yf_sym)
+            if _news:
+                st.divider()
+                st.markdown("**📰 Recent News** &nbsp;<span style='color:#666;font-size:.8rem'>sentiment tags: 🟢 positive · 🔴 negative · ⚪ neutral</span>",
+                            unsafe_allow_html=True)
+                _nc1, _nc2 = st.columns(2)
+                for _i, _n in enumerate(_news[:8]):
+                    _c = _nc1 if _i % 2 == 0 else _nc2
+                    _c.markdown(
+                        f"<div style='font-size:.82rem;margin-bottom:6px;line-height:1.3'>"
+                        f"{_n['tag']} <span style='color:#aaa'>{_n['dt']}</span>&nbsp;"
+                        f"<b>{_n['title']}</b>"
+                        f"<span style='color:#666'> — {_n['source']}</span></div>",
+                        unsafe_allow_html=True,
+                    )
+
+            # ── Insider (stocks only) ─────────────────────────────────────────
+            if not is_crypto:
+                _ins = getattr(fund, "insider_activity", None) or []
+                if _ins:
                     st.divider()
-                    st.markdown("**📰 Recent Headlines**")
-                    for _h in _news[:6]:
-                        st.markdown(f"• {_h}")
+                    st.markdown("**🧑‍💼 Insider Activity**")
+                    for _a in _ins[:4]:
+                        _ii = "🔴" if any(w in _a.lower() for w in ("sale", "sell")) else "🟢"
+                        st.markdown(f"<span style='font-size:.83rem'>{_ii}&nbsp;{_a}</span>",
+                                    unsafe_allow_html=True)
 
-                # ── Insider activity (stocks only) ────────────────────────
-                if not is_crypto:
-                    _ins = getattr(fund, "insider_activity", None) or []
-                    if _ins:
-                        st.divider()
-                        st.markdown("**🧑‍💼 Insider Activity**")
-                        for _a in _ins[:4]:
-                            _ii = "🔴" if any(w in _a.lower() for w in ("sale", "sell")) else "🟢"
-                            st.markdown(f"{_ii}&nbsp; {_a}")
-
-                st.caption(
-                    f"Analysis: {alpaca_sym} · Technical from 6-month OHLCV · "
-                    f"Chart from 3-month daily data · Scores are rule-based, not LLM · "
-                    f"Refreshes when you click Analyse again"
-                )
+            st.caption(
+                f"{alpaca_sym} · Technical signals derived from 1-year OHLCV (RSI, MACD, BB, OBV, volume ratio, golden cross) · "
+                f"Fundamental from yfinance + CoinGecko · Scores are rule-based heuristics, not AI predictions · "
+                f"Past signals do not guarantee future price direction"
+            )
 
