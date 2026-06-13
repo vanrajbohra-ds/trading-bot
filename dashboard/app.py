@@ -1248,119 +1248,120 @@ with t_exp:
                     unsafe_allow_html=True,
                 )
 
-            # ── Chart full-width, compact ─────────────────────────────────────
-            _df_view = _df.iloc[-63:] if _df is not None and len(_df) > 63 else _df
-            if _df_view is not None and not _df_view.empty:
-                _fig = make_subplots(
-                    rows=2, cols=1, row_heights=[0.68, 0.32],
-                    shared_xaxes=True, vertical_spacing=0.02,
-                    subplot_titles=("Price · 3 months", "RSI (14)"),
-                )
-                _fig.add_trace(go.Scatter(
-                    x=_df_view.index, y=_df_view["bb_upper"],
-                    line=dict(color="rgba(144,202,249,0.15)", width=1),
-                    name="BB", showlegend=True), row=1, col=1)
-                _fig.add_trace(go.Scatter(
-                    x=_df_view.index, y=_df_view["bb_lower"],
-                    fill="tonexty", fillcolor="rgba(144,202,249,0.06)",
-                    line=dict(color="rgba(144,202,249,0.15)", width=1),
-                    name="BB lower", showlegend=False), row=1, col=1)
-                _fig.add_trace(go.Scatter(
-                    x=_df_view.index, y=_df_view["Close"],
-                    line=dict(color=v_color, width=2), name="Price",
-                    hovertemplate="%{y:$,.4f}<extra></extra>" if is_crypto
-                                  else "%{y:$,.2f}<extra></extra>"), row=1, col=1)
-                _fig.add_trace(go.Scatter(
-                    x=_df_view.index, y=_df_view["sma20"],
-                    line=dict(color="#ff9800", width=1, dash="dot"), name="SMA20"), row=1, col=1)
-                if _df_view["sma50"].notna().any():
+            # ── Chart (left) | Technical + Fundamental stacked (right) ──────────
+            _chart_col, _sig_col = st.columns([58, 42], gap="medium")
+
+            with _chart_col:
+                _df_view = _df.iloc[-63:] if _df is not None and len(_df) > 63 else _df
+                if _df_view is not None and not _df_view.empty:
+                    _fig = make_subplots(
+                        rows=2, cols=1, row_heights=[0.72, 0.28],
+                        shared_xaxes=True, vertical_spacing=0.02,
+                        subplot_titles=("Price · 3 months", "RSI (14)"),
+                    )
                     _fig.add_trace(go.Scatter(
-                        x=_df_view.index, y=_df_view["sma50"],
-                        line=dict(color="#e91e63", width=1, dash="dot"), name="SMA50"), row=1, col=1)
-                _fig.add_trace(go.Scatter(
-                    x=_df_view.index, y=_df_view["rsi"],
-                    line=dict(color="#b0bec5", width=1.5), name="RSI",
-                    hovertemplate="RSI %{y:.1f}<extra></extra>"), row=2, col=1)
-                _fig.add_hrect(y0=70, y1=100, fillcolor="rgba(255,23,68,0.06)",
-                               line_width=0, row=2, col=1)
-                _fig.add_hrect(y0=0, y1=30, fillcolor="rgba(0,200,83,0.06)",
-                               line_width=0, row=2, col=1)
-                _fig.add_hline(y=70, line_dash="dot",
-                               line_color="rgba(255,100,100,0.35)", row=2, col=1)
-                _fig.add_hline(y=30, line_dash="dot",
-                               line_color="rgba(100,255,100,0.35)", row=2, col=1)
-                _fig.update_layout(
-                    height=260, hovermode="x unified",
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    margin=dict(l=0, r=0, t=22, b=0),
-                    xaxis=dict(showgrid=False, color="white"),
-                    xaxis2=dict(showgrid=False, color="white"),
-                    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
-                               color="white",
-                               tickformat="$,.4f" if is_crypto else "$,.2f"),
-                    yaxis2=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
-                                color="white", range=[0, 100]),
-                    legend=dict(font=dict(color="white", size=9),
-                                orientation="h", yanchor="bottom", y=1.02,
-                                xanchor="left", x=0),
-                    font=dict(color="white"),
-                )
-                _fig.update_annotations(font=dict(color="#777", size=10))
-                st.plotly_chart(_fig, use_container_width=True)
-            else:
-                st.warning("Chart data unavailable for this symbol.")
+                        x=_df_view.index, y=_df_view["bb_upper"],
+                        line=dict(color="rgba(144,202,249,0.15)", width=1),
+                        name="BB", showlegend=True), row=1, col=1)
+                    _fig.add_trace(go.Scatter(
+                        x=_df_view.index, y=_df_view["bb_lower"],
+                        fill="tonexty", fillcolor="rgba(144,202,249,0.06)",
+                        line=dict(color="rgba(144,202,249,0.15)", width=1),
+                        name="BB lower", showlegend=False), row=1, col=1)
+                    _fig.add_trace(go.Scatter(
+                        x=_df_view.index, y=_df_view["Close"],
+                        line=dict(color=v_color, width=2), name="Price",
+                        hovertemplate="%{y:$,.4f}<extra></extra>" if is_crypto
+                                      else "%{y:$,.2f}<extra></extra>"), row=1, col=1)
+                    _fig.add_trace(go.Scatter(
+                        x=_df_view.index, y=_df_view["sma20"],
+                        line=dict(color="#ff9800", width=1, dash="dot"), name="SMA20"), row=1, col=1)
+                    if _df_view["sma50"].notna().any():
+                        _fig.add_trace(go.Scatter(
+                            x=_df_view.index, y=_df_view["sma50"],
+                            line=dict(color="#e91e63", width=1, dash="dot"), name="SMA50"), row=1, col=1)
+                    _fig.add_trace(go.Scatter(
+                        x=_df_view.index, y=_df_view["rsi"],
+                        line=dict(color="#b0bec5", width=1.5), name="RSI",
+                        hovertemplate="RSI %{y:.1f}<extra></extra>"), row=2, col=1)
+                    _fig.add_hrect(y0=70, y1=100, fillcolor="rgba(255,23,68,0.06)",
+                                   line_width=0, row=2, col=1)
+                    _fig.add_hrect(y0=0, y1=30, fillcolor="rgba(0,200,83,0.06)",
+                                   line_width=0, row=2, col=1)
+                    _fig.add_hline(y=70, line_dash="dot",
+                                   line_color="rgba(255,100,100,0.35)", row=2, col=1)
+                    _fig.add_hline(y=30, line_dash="dot",
+                                   line_color="rgba(100,255,100,0.35)", row=2, col=1)
+                    _fig.update_layout(
+                        height=390, hovermode="x unified",
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(l=0, r=0, t=22, b=0),
+                        xaxis=dict(showgrid=False, color="white"),
+                        xaxis2=dict(showgrid=False, color="white"),
+                        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
+                                   color="white",
+                                   tickformat="$,.4f" if is_crypto else "$,.2f"),
+                        yaxis2=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
+                                    color="white", range=[0, 100]),
+                        legend=dict(font=dict(color="white", size=9),
+                                    orientation="h", yanchor="bottom", y=1.02,
+                                    xanchor="left", x=0),
+                        font=dict(color="white"),
+                    )
+                    _fig.update_annotations(font=dict(color="#777", size=10))
+                    st.plotly_chart(_fig, use_container_width=True)
+                else:
+                    st.warning("Chart data unavailable for this symbol.")
 
-            # ── Technical  |  Fundamental — side by side ──────────────────────
-            _tcol, _fcol = st.columns(2, gap="large")
-
-            with _tcol:
+            with _sig_col:
+                # Technical
                 st.markdown(f"**📊 Technical — {tech_score}/100**")
                 if tech_sigs:
                     for _ico, _lbl in tech_sigs:
-                        st.markdown(f"<div style='font-size:.83rem;line-height:1.5'>"
-                                    f"{_ico}&nbsp;{_lbl}</div>",
-                                    unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div style='font-size:.8rem;line-height:1.45'>{_ico}&nbsp;{_lbl}</div>",
+                            unsafe_allow_html=True)
                 else:
                     st.caption("No technical data available")
 
-            with _fcol:
+                st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+                # Fundamental
                 _f_ico = "🔗" if is_crypto else "🏢"
                 st.markdown(f"**{_f_ico} Fundamental — {fund_score}/100**")
                 if fund_sigs:
                     for _ico, _lbl in fund_sigs:
-                        st.markdown(f"<div style='font-size:.83rem;line-height:1.5'>"
-                                    f"{_ico}&nbsp;{_lbl}</div>",
-                                    unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div style='font-size:.8rem;line-height:1.45'>{_ico}&nbsp;{_lbl}</div>",
+                            unsafe_allow_html=True)
                 else:
                     st.caption("No fundamental data available")
 
-            # ── Insider (stocks only) — above news ───────────────────────────
+            # ── Insider (stocks only) ─────────────────────────────────────────
             if not is_crypto:
                 _ins = getattr(fund, "insider_activity", None) or []
                 if _ins:
                     st.divider()
                     st.markdown("**🧑‍💼 Insider Activity**")
-                    for _a in _ins[:4]:
+                    for _a in _ins[:3]:
                         _ii = "🔴" if any(w in _a.lower() for w in ("sale", "sell")) else "🟢"
-                        st.markdown(f"<span style='font-size:.83rem'>{_ii}&nbsp;{_a}</span>",
+                        st.markdown(f"<div style='font-size:.8rem;line-height:1.4'>{_ii}&nbsp;{_a}</div>",
                                     unsafe_allow_html=True)
 
-            # ── News ──────────────────────────────────────────────────────────
+            # ── News — collapsed expander so it doesn't break single-page view ─
             _news = _fetch_explore_news(yf_sym)
             if _news:
-                st.divider()
-                st.markdown("**📰 Recent News** &nbsp;<span style='color:#666;font-size:.8rem'>🟢 positive · 🔴 negative · ⚪ neutral</span>",
-                            unsafe_allow_html=True)
-                _nc1, _nc2 = st.columns(2)
-                for _i, _n in enumerate(_news[:8]):
-                    _c = _nc1 if _i % 2 == 0 else _nc2
-                    _c.markdown(
-                        f"<div style='font-size:.82rem;margin-bottom:6px;line-height:1.3'>"
-                        f"{_n['tag']} <span style='color:#aaa'>{_n['dt']}</span>&nbsp;"
-                        f"<b>{_n['title']}</b>"
-                        f"<span style='color:#666'> — {_n['source']}</span></div>",
-                        unsafe_allow_html=True,
-                    )
+                with st.expander(f"📰 Recent News ({len(_news)} headlines)", expanded=False):
+                    _nc1, _nc2 = st.columns(2)
+                    for _i, _n in enumerate(_news[:8]):
+                        _c = _nc1 if _i % 2 == 0 else _nc2
+                        _c.markdown(
+                            f"<div style='font-size:.82rem;margin-bottom:6px;line-height:1.3'>"
+                            f"{_n['tag']} <span style='color:#aaa'>{_n['dt']}</span>&nbsp;"
+                            f"<b>{_n['title']}</b>"
+                            f"<span style='color:#666'> — {_n['source']}</span></div>",
+                            unsafe_allow_html=True,
+                        )
 
             st.caption(
                 f"{alpaca_sym} · Technical signals derived from 1-year OHLCV (RSI, MACD, BB, OBV, volume ratio, golden cross) · "
