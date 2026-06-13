@@ -36,6 +36,116 @@ flowchart TD
 
 ---
 
+## Component Architecture
+
+All source files and their data flows, grouped by layer.
+
+```mermaid
+flowchart TB
+    subgraph TRIG["Trigger Layer"]
+        CRON2["cron-job.org"]
+        GHA[".github/workflows/trading_bot.yml\nGitHub Actions"]
+        CRON2 -->|POST workflow_dispatch| GHA
+    end
+
+    subgraph CFG["Config Layer"]
+        CONFIG["config.py\nWatchlist, risk params, constants"]
+        WL["watchlist.json\nDynamic tickers"]
+        MAIN2["main.py\nEntry point - single cycle"]
+        CONFIG --> MAIN2
+        WL --> MAIN2
+    end
+
+    GHA --> MAIN2
+
+    subgraph ORCH["Orchestrator - orchestrator.py"]
+        SC2["Stock Cycle\nAAPL TSLA NVDA MSFT AMZN"]
+        CC2["Crypto Cycle\nETH SOL DOGE AVAX"]
+        MC2["Momentum Cycle\nDynamic screener picks"]
+        MACRO2["Macro Context\nSPY regime, VIX, drawdown"]
+    end
+
+    MAIN2 --> SC2
+    MAIN2 --> CC2
+    MAIN2 --> MC2
+    MAIN2 --> MACRO2
+
+    subgraph SCAN["Scanner - market_scanner.py"]
+        YSC["Yahoo Finance Screeners\nDay gainers, momentum"]
+        CGC["CoinGecko API\nTop-100 crypto by volume"]
+    end
+
+    MC2 --> YSC
+    MC2 --> CGC
+
+    subgraph AGTS["Agents Layer"]
+        FA2["fundamental_agent.py\nP/E, EPS, revenue growth\nanalyst ratings, insider trades"]
+        TA2["technical_agent.py\nRSI, MACD, Bollinger Bands\nSMA50/200, OBV, volume ratio"]
+        DECA["decision_agent.py\nBull vs Bear debate\nBUY/SELL/HOLD + confidence"]
+    end
+
+    subgraph DATA["External Data"]
+        YF["yfinance\nOHLCV, fundamentals, news"]
+        CGAPI["CoinGecko REST\ncrypto market data"]
+        HF["HuggingFace\nsentiment model"]
+        LLM["LLM Providers\nCerebras, Groq, Gemini, OpenRouter"]
+    end
+
+    SC2 --> FA2
+    CC2 --> FA2
+    MC2 --> FA2
+    SC2 --> TA2
+    CC2 --> TA2
+    MC2 --> TA2
+
+    FA2 --> YF
+    FA2 --> CGAPI
+    FA2 --> HF
+    TA2 --> YF
+
+    FA2 --> DECA
+    TA2 --> DECA
+    MACRO2 --> DECA
+    DECA --> LLM
+
+    subgraph EXEC["Execution Layer"]
+        RM2["risk_manager.py\nPosition sizing, stop/take-profit"]
+        ALP2["alpaca_client.py\nOrder submission, account info"]
+        TGN["telegram_notifier.py\nTrade alerts, heartbeat, EOD"]
+    end
+
+    DECA --> RM2
+    RM2 --> ALP2
+    RM2 --> TGN
+
+    subgraph APA["Alpaca Paper API"]
+        ORD["Orders"]
+        POS["Positions"]
+        HIST["Trade History"]
+    end
+
+    ALP2 --> ORD
+    ALP2 --> POS
+    ALP2 --> HIST
+
+    subgraph DSH["Dashboard - dashboard/app.py"]
+        T1["Overview tab\nP/L, metrics"]
+        T2["Positions tab\nOpen holdings"]
+        T3["Momentum tab\nScreener picks"]
+        T4["History tab\nPast trades"]
+        T5["Reports tab\nAgent analysis"]
+        T6["Prices tab\nLive quotes"]
+        T7["Explore tab\nOn-demand analysis"]
+    end
+
+    POS --> DSH
+    HIST --> DSH
+    YF --> T7
+    LLM --> T5
+```
+
+---
+
 ## LLM Failover Chain
 
 Every decision automatically falls through to the next provider on any 429 / quota error — the bot never fails on an LLM call during normal trading.
