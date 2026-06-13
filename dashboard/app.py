@@ -1248,87 +1248,88 @@ with t_exp:
                     unsafe_allow_html=True,
                 )
 
-            # ── Main layout: chart left │ signals right ───────────────────────
-            _chart_col, _sig_col = st.columns([6, 4], gap="medium")
+            # ── Chart full-width, compact ─────────────────────────────────────
+            _df_view = _df.iloc[-63:] if _df is not None and len(_df) > 63 else _df
+            if _df_view is not None and not _df_view.empty:
+                _fig = make_subplots(
+                    rows=2, cols=1, row_heights=[0.68, 0.32],
+                    shared_xaxes=True, vertical_spacing=0.02,
+                    subplot_titles=("Price · 3 months", "RSI (14)"),
+                )
+                _fig.add_trace(go.Scatter(
+                    x=_df_view.index, y=_df_view["bb_upper"],
+                    line=dict(color="rgba(144,202,249,0.15)", width=1),
+                    name="BB", showlegend=True), row=1, col=1)
+                _fig.add_trace(go.Scatter(
+                    x=_df_view.index, y=_df_view["bb_lower"],
+                    fill="tonexty", fillcolor="rgba(144,202,249,0.06)",
+                    line=dict(color="rgba(144,202,249,0.15)", width=1),
+                    name="BB lower", showlegend=False), row=1, col=1)
+                _fig.add_trace(go.Scatter(
+                    x=_df_view.index, y=_df_view["Close"],
+                    line=dict(color=v_color, width=2), name="Price",
+                    hovertemplate="%{y:$,.4f}<extra></extra>" if is_crypto
+                                  else "%{y:$,.2f}<extra></extra>"), row=1, col=1)
+                _fig.add_trace(go.Scatter(
+                    x=_df_view.index, y=_df_view["sma20"],
+                    line=dict(color="#ff9800", width=1, dash="dot"), name="SMA20"), row=1, col=1)
+                if _df_view["sma50"].notna().any():
+                    _fig.add_trace(go.Scatter(
+                        x=_df_view.index, y=_df_view["sma50"],
+                        line=dict(color="#e91e63", width=1, dash="dot"), name="SMA50"), row=1, col=1)
+                _fig.add_trace(go.Scatter(
+                    x=_df_view.index, y=_df_view["rsi"],
+                    line=dict(color="#b0bec5", width=1.5), name="RSI",
+                    hovertemplate="RSI %{y:.1f}<extra></extra>"), row=2, col=1)
+                _fig.add_hrect(y0=70, y1=100, fillcolor="rgba(255,23,68,0.06)",
+                               line_width=0, row=2, col=1)
+                _fig.add_hrect(y0=0, y1=30, fillcolor="rgba(0,200,83,0.06)",
+                               line_width=0, row=2, col=1)
+                _fig.add_hline(y=70, line_dash="dot",
+                               line_color="rgba(255,100,100,0.35)", row=2, col=1)
+                _fig.add_hline(y=30, line_dash="dot",
+                               line_color="rgba(100,255,100,0.35)", row=2, col=1)
+                _fig.update_layout(
+                    height=260, hovermode="x unified",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=0, r=0, t=22, b=0),
+                    xaxis=dict(showgrid=False, color="white"),
+                    xaxis2=dict(showgrid=False, color="white"),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
+                               color="white",
+                               tickformat="$,.4f" if is_crypto else "$,.2f"),
+                    yaxis2=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
+                                color="white", range=[0, 100]),
+                    legend=dict(font=dict(color="white", size=9),
+                                orientation="h", yanchor="bottom", y=1.02,
+                                xanchor="left", x=0),
+                    font=dict(color="white"),
+                )
+                _fig.update_annotations(font=dict(color="#777", size=10))
+                st.plotly_chart(_fig, use_container_width=True)
+            else:
+                st.warning("Chart data unavailable for this symbol.")
 
-            with _chart_col:
-                # Show last 3 months visually (1-year df used for indicator accuracy)
-                _df_view = _df.iloc[-63:] if _df is not None and len(_df) > 63 else _df
-                if _df_view is not None and not _df_view.empty:
-                    _fig = make_subplots(
-                        rows=2, cols=1, row_heights=[0.70, 0.30],
-                        shared_xaxes=True, vertical_spacing=0.03,
-                        subplot_titles=("Price · 3 months", "RSI (14)"),
-                    )
-                    _fig.add_trace(go.Scatter(
-                        x=_df_view.index, y=_df_view["bb_upper"],
-                        line=dict(color="rgba(144,202,249,0.15)", width=1),
-                        name="BB", showlegend=True), row=1, col=1)
-                    _fig.add_trace(go.Scatter(
-                        x=_df_view.index, y=_df_view["bb_lower"],
-                        fill="tonexty", fillcolor="rgba(144,202,249,0.06)",
-                        line=dict(color="rgba(144,202,249,0.15)", width=1),
-                        name="BB lower", showlegend=False), row=1, col=1)
-                    _fig.add_trace(go.Scatter(
-                        x=_df_view.index, y=_df_view["Close"],
-                        line=dict(color=v_color, width=2), name="Price",
-                        hovertemplate="%{y:$,.4f}<extra></extra>" if is_crypto
-                                      else "%{y:$,.2f}<extra></extra>"), row=1, col=1)
-                    _fig.add_trace(go.Scatter(
-                        x=_df_view.index, y=_df_view["sma20"],
-                        line=dict(color="#ff9800", width=1, dash="dot"), name="SMA20"), row=1, col=1)
-                    if _df_view["sma50"].notna().any():
-                        _fig.add_trace(go.Scatter(
-                            x=_df_view.index, y=_df_view["sma50"],
-                            line=dict(color="#e91e63", width=1, dash="dot"), name="SMA50"), row=1, col=1)
-                    _fig.add_trace(go.Scatter(
-                        x=_df_view.index, y=_df_view["rsi"],
-                        line=dict(color="#b0bec5", width=1.5), name="RSI",
-                        hovertemplate="RSI %{y:.1f}<extra></extra>"), row=2, col=1)
-                    _fig.add_hrect(y0=70, y1=100, fillcolor="rgba(255,23,68,0.06)",
-                                   line_width=0, row=2, col=1)
-                    _fig.add_hrect(y0=0,  y1=30,  fillcolor="rgba(0,200,83,0.06)",
-                                   line_width=0, row=2, col=1)
-                    _fig.add_hline(y=70, line_dash="dot",
-                                   line_color="rgba(255,100,100,0.35)", row=2, col=1)
-                    _fig.add_hline(y=30, line_dash="dot",
-                                   line_color="rgba(100,255,100,0.35)", row=2, col=1)
-                    _fig.update_layout(
-                        height=340, hovermode="x unified",
-                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(l=0, r=0, t=28, b=0),
-                        xaxis=dict(showgrid=False, color="white"),
-                        xaxis2=dict(showgrid=False, color="white"),
-                        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
-                                   color="white",
-                                   tickformat="$,.4f" if is_crypto else "$,.2f"),
-                        yaxis2=dict(showgrid=True, gridcolor="rgba(255,255,255,0.06)",
-                                    color="white", range=[0, 100]),
-                        legend=dict(font=dict(color="white", size=9),
-                                    orientation="h", yanchor="bottom", y=1.01,
-                                    xanchor="left", x=0),
-                        font=dict(color="white"),
-                    )
-                    _fig.update_annotations(font=dict(color="#777", size=10))
-                    st.plotly_chart(_fig, use_container_width=True)
-                else:
-                    st.warning("Chart data unavailable for this symbol.")
+            # ── Technical  |  Fundamental — side by side ──────────────────────
+            _tcol, _fcol = st.columns(2, gap="large")
 
-            with _sig_col:
+            with _tcol:
                 st.markdown(f"**📊 Technical — {tech_score}/100**")
                 if tech_sigs:
                     for _ico, _lbl in tech_sigs:
-                        st.markdown(f"<span style='font-size:.85rem'>{_ico}&nbsp;{_lbl}</span>",
+                        st.markdown(f"<div style='font-size:.83rem;line-height:1.5'>"
+                                    f"{_ico}&nbsp;{_lbl}</div>",
                                     unsafe_allow_html=True)
                 else:
                     st.caption("No technical data available")
 
-                st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
+            with _fcol:
                 _f_ico = "🔗" if is_crypto else "🏢"
                 st.markdown(f"**{_f_ico} Fundamental — {fund_score}/100**")
                 if fund_sigs:
                     for _ico, _lbl in fund_sigs:
-                        st.markdown(f"<span style='font-size:.85rem'>{_ico}&nbsp;{_lbl}</span>",
+                        st.markdown(f"<div style='font-size:.83rem;line-height:1.5'>"
+                                    f"{_ico}&nbsp;{_lbl}</div>",
                                     unsafe_allow_html=True)
                 else:
                     st.caption("No fundamental data available")
