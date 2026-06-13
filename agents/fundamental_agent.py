@@ -1,6 +1,24 @@
+import os
+import datetime
+import requests
 from dataclasses import dataclass, field
 from typing import Optional
 import yfinance as yf
+
+
+# FinBERT via HuggingFace Inference API — free, no GPU needed
+_HF_FINBERT_URL = "https://api-inference.huggingface.co/models/ProsusAI/finbert"
+
+_BULLISH_TERMS = {
+    "upgrade", "beat", "beats", "exceeds", "record", "strong", "growth",
+    "surge", "bullish", "profit", "gains", "soars", "raised", "outperform",
+    "positive", "buy", "overweight", "above expectations", "revenue growth",
+}
+_BEARISH_TERMS = {
+    "downgrade", "miss", "misses", "below", "weak", "decline", "loss",
+    "cut", "layoffs", "lawsuit", "fraud", "negative", "falls", "drops",
+    "lowered", "concern", "risk", "warning", "probe", "investigation", "sell",
+}
 
 
 @dataclass
@@ -21,9 +39,14 @@ class FundamentalReport:
     analyst_target_price: Optional[float] = None
     recent_upgrades: list = field(default_factory=list)
     recent_earnings_surprises: list = field(default_factory=list)
-    # News & insider (Phase 1 additions)
-    recent_news: list = field(default_factory=list)      # last 5 headlines
-    insider_activity: list = field(default_factory=list) # recent insider transactions
+    # News & insider
+    recent_news: list = field(default_factory=list)
+    insider_activity: list = field(default_factory=list)
+    # Sentiment & options signals
+    news_sentiment_score: Optional[float] = None   # -1.0 (bearish) to +1.0 (bullish)
+    news_sentiment_label: Optional[str] = None     # BULLISH / BEARISH / NEUTRAL
+    earnings_in_days: Optional[int] = None         # days until next earnings (None if >14)
+    put_call_ratio: Optional[float] = None         # options P/C ratio (stocks only)
     # Crypto fields
     market_cap: Optional[float] = None
     circulating_supply: Optional[float] = None
@@ -53,6 +76,13 @@ class FundamentalReport:
             lines.append(f"  Recent Upgrades:      {', '.join(self.recent_upgrades[:3])}")
         if self.recent_earnings_surprises:
             lines.append(f"  Earnings Surprises:   {', '.join(self.recent_earnings_surprises[:4])}")
+        if self.news_sentiment_score is not None:
+            lines.append(f"  News Sentiment:       {self.news_sentiment_label} (score {self.news_sentiment_score:+.2f})")
+        if self.put_call_ratio is not None:
+            pcr_label = "BEARISH" if self.put_call_ratio > 1.3 else ("BULLISH" if self.put_call_ratio < 0.7 else "NEUTRAL")
+            lines.append(f"  Put/Call Ratio:       {self.put_call_ratio:.2f} [{pcr_label}]")
+        if self.earnings_in_days is not None:
+            lines.append(f"  *** EARNINGS IN {self.earnings_in_days} DAYS — elevated volatility, extra caution on BUY ***")
         if self.recent_news:
             lines.append("  Recent News:")
             for headline in self.recent_news[:5]:
@@ -77,6 +107,8 @@ class FundamentalReport:
             lines.append(f"  52-Week Low:        ${self.week52_low:,.4f} ({pct_from_low:+.1f}% from now)")
         if self.volume_24h:
             lines.append(f"  24h Volume:         ${self.volume_24h/1e6:.1f}M")
+        if self.news_sentiment_score is not None:
+            lines.append(f"  News Sentiment:     {self.news_sentiment_label} (score {self.news_sentiment_score:+.2f})")
         if self.recent_news:
             lines.append("  Recent News:")
             for headline in self.recent_news[:3]:
@@ -90,13 +122,107 @@ class FundamentalAgent:
         """Analyze a symbol. Pass yf_symbol if Alpaca symbol differs from yfinance symbol."""
         lookup = yf_symbol or symbol
         is_crypto = yf_symbol is not None and "-USD" in yf_symbol
-
         if is_crypto:
             return self._analyze_crypto(symbol, lookup)
         return self._analyze_stock(symbol, lookup)
 
+    # ── Signal helpers ──────────────────────────────────────────────────────────
+
+    def _score_news_sentiment(self, headlines: list) -> tuple:
+        """Score headlines using FinBERT (HuggingFace API) with keyword fallback.
+
+        Primary: ProsusAI/finbert via HF Inference API — needs HUGGINGFACE_API_TOKEN.
+        Fallback: lightweight keyword scoring (no API key required).
+        Returns (score -1.0 to +1.0, label).
+        """
+        if not headlines:
+            return None, None
+
+        token = os.environ.get("HUGGINGFACE_API_TOKEN")
+        if token:
+            try:
+                r = requests.post(
+                    _HF_FINBERT_URL,
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"inputs": [h[:512] for h in headlines[:5]]},
+                    timeout=20,
+                )
+                if r.ok:
+                    results = r.json()
+                    # FinBERT returns [[{label, score}, ...], ...] — one list per input
+                    if isinstance(results, list) and results:
+                        # Handle both nested [[...]] and flat [{...}] responses
+                        items_list = results if isinstance(results[0], list) else [results]
+                        total, count = 0.0, 0
+                        for item in items_list:
+                            if not isinstance(item, list):
+                                continue
+                            top = max(item, key=lambda x: x.get("score", 0))
+                            lbl = top.get("label", "neutral").lower()
+                            sc  = top.get("score", 0.5)
+                            total += sc if lbl == "positive" else (-sc if lbl == "negative" else 0.0)
+                            count += 1
+                        if count:
+                            avg = round(total / count, 3)
+                            label = "BULLISH" if avg > 0.2 else ("BEARISH" if avg < -0.2 else "NEUTRAL")
+                            return avg, label
+            except Exception:
+                pass  # fall through to keyword scoring
+
+        # Keyword fallback — no API key required
+        text = " ".join(headlines).lower()
+        bull = sum(1 for w in _BULLISH_TERMS if w in text)
+        bear = sum(1 for w in _BEARISH_TERMS if w in text)
+        if bull + bear == 0:
+            return 0.0, "NEUTRAL"
+        score = round((bull - bear) / (bull + bear), 3)
+        label = "BULLISH" if score > 0.1 else ("BEARISH" if score < -0.1 else "NEUTRAL")
+        return score, label
+
+    def _get_earnings_warning(self, ticker) -> Optional[int]:
+        """Return days until next earnings if within 14 days, else None."""
+        try:
+            cal = ticker.calendar
+            if cal is None:
+                return None
+            if hasattr(cal, "to_dict"):
+                cal = cal.to_dict()
+            if not isinstance(cal, dict):
+                return None
+            date_val = cal.get("Earnings Date")
+            if date_val is None:
+                return None
+            if isinstance(date_val, (list, tuple)):
+                date_val = date_val[0]
+            if hasattr(date_val, "date"):
+                date_val = date_val.date()
+            elif isinstance(date_val, str):
+                date_val = datetime.datetime.strptime(date_val[:10], "%Y-%m-%d").date()
+            days = (date_val - datetime.date.today()).days
+            return days if 0 <= days <= 14 else None
+        except Exception:
+            return None
+
+    def _get_put_call_ratio(self, ticker) -> Optional[float]:
+        """Compute put/call volume ratio from nearest expiry options chain.
+        >1.3 = bearish hedging, <0.7 = bullish positioning."""
+        try:
+            exps = ticker.options
+            if not exps:
+                return None
+            chain    = ticker.option_chain(exps[0])
+            put_vol  = float(chain.puts["volume"].fillna(0).sum())
+            call_vol = float(chain.calls["volume"].fillna(0).sum())
+            if call_vol <= 0:
+                return None
+            return round(put_vol / call_vol, 2)
+        except Exception:
+            return None
+
+    # ── Data fetchers ───────────────────────────────────────────────────────────
+
     def _fetch_news(self, ticker) -> list:
-        """Return up to 5 recent headline strings. Handles yfinance API variations."""
+        """Return up to 5 recent headline strings."""
         headlines = []
         try:
             raw = None
@@ -144,6 +270,8 @@ class FundamentalAgent:
             pass
         return lines
 
+    # ── Analysis ────────────────────────────────────────────────────────────────
+
     def _analyze_stock(self, symbol: str, yf_symbol: str) -> FundamentalReport:
         try:
             ticker = yf.Ticker(yf_symbol)
@@ -177,6 +305,9 @@ class FundamentalAgent:
             except Exception:
                 pass
 
+            news = self._fetch_news(ticker)
+            sentiment_score, sentiment_label = self._score_news_sentiment(news)
+
             return FundamentalReport(
                 symbol=symbol,
                 asset_type="stock",
@@ -191,8 +322,12 @@ class FundamentalAgent:
                 current_price=current_price,
                 recent_upgrades=upgrades,
                 recent_earnings_surprises=earnings_surprises,
-                recent_news=self._fetch_news(ticker),
+                recent_news=news,
                 insider_activity=self._fetch_insider_activity(ticker),
+                news_sentiment_score=sentiment_score,
+                news_sentiment_label=sentiment_label,
+                earnings_in_days=self._get_earnings_warning(ticker),
+                put_call_ratio=self._get_put_call_ratio(ticker),
             )
         except Exception as e:
             return FundamentalReport(symbol=symbol, fetch_error=str(e))
@@ -208,6 +343,9 @@ class FundamentalAgent:
                 or info.get("open")
             )
 
+            news = self._fetch_news(ticker)
+            sentiment_score, sentiment_label = self._score_news_sentiment(news)
+
             return FundamentalReport(
                 symbol=symbol,
                 asset_type="crypto",
@@ -217,7 +355,9 @@ class FundamentalAgent:
                 week52_high=info.get("fiftyTwoWeekHigh"),
                 week52_low=info.get("fiftyTwoWeekLow"),
                 volume_24h=info.get("volume24Hr") or info.get("regularMarketVolume"),
-                recent_news=self._fetch_news(ticker),
+                recent_news=news,
+                news_sentiment_score=sentiment_score,
+                news_sentiment_label=sentiment_label,
             )
         except Exception as e:
             return FundamentalReport(symbol=symbol, asset_type="crypto", fetch_error=str(e))

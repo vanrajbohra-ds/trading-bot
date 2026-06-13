@@ -27,7 +27,40 @@ STARTING_CAPITAL   = 100_000.0
 DAILY_LOSS_LIMIT   = 0.03   # pause NEW buys if portfolio drops >3% from starting capital
 
 
-# ── Market regime ──────────────────────────────────────────────────────────────
+# ── Market regime + fear/volatility signals ────────────────────────────────────
+
+def _get_vix_level() -> tuple:
+    """Return (vix_value, regime_label). None if unavailable."""
+    try:
+        hist = yf.Ticker("^VIX").history(period="2d", interval="1d")
+        if hist.empty:
+            return None, None
+        level = round(float(hist["Close"].iloc[-1]), 1)
+        if level < 15:
+            label = "LOW (complacency — potential late-cycle risk)"
+        elif level < 20:
+            label = "NORMAL"
+        elif level < 30:
+            label = "ELEVATED (caution on new positions)"
+        else:
+            label = "EXTREME_FEAR (contrarian buy signal — market oversold)"
+        return level, label
+    except Exception:
+        return None, None
+
+
+def _get_crypto_fear_greed() -> tuple:
+    """Return (score 0-100, label) from alternative.me free API. None if unavailable."""
+    import requests as _req
+    try:
+        r = _req.get("https://api.alternative.me/fng/", params={"limit": 1}, timeout=5)
+        if not r.ok:
+            return None, None
+        data = r.json()["data"][0]
+        return int(data["value"]), data["value_classification"]
+    except Exception:
+        return None, None
+
 
 def _is_bull_market() -> bool:
     """True when SPY is above its 20-day SMA — broad market in uptrend.
@@ -62,7 +95,7 @@ def _ok_to_buy(account: dict) -> bool:
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _build_macro_context(bull_market: bool, account: dict) -> str:
-    """One-paragraph market backdrop injected into every LLM decision prompt."""
+    """Market backdrop + fear/volatility signals injected into every LLM prompt."""
     regime = (
         "BULL — SPY is above its 20-day SMA (stock buys permitted)"
         if bull_market else
@@ -74,11 +107,18 @@ def _build_macro_context(bull_market: bool, account: dict) -> str:
         if drawdown > 0 else
         f"{abs(drawdown):.1f}% gain above starting capital"
     )
-    return (
-        "MACRO CONTEXT:\n"
-        f"  Market Regime:    {regime}\n"
-        f"  Portfolio Status: {status}"
-    )
+    lines = [
+        "MACRO CONTEXT:",
+        f"  Market Regime:     {regime}",
+        f"  Portfolio Status:  {status}",
+    ]
+    vix, vix_label = _get_vix_level()
+    if vix is not None:
+        lines.append(f"  VIX:               {vix} [{vix_label}]")
+    cfg_score, cfg_label = _get_crypto_fear_greed()
+    if cfg_score is not None:
+        lines.append(f"  Crypto Fear/Greed: {cfg_score}/100 — {cfg_label}")
+    return "\n".join(lines)
 
 
 def _investable_cash(account: dict, confidence: int = 0) -> float:

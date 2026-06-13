@@ -124,11 +124,6 @@ def run_once():
     if _is_near_close():
         logger.info("Just after market close — sending end-of-day summary")
         _send_daily_summary()
-    elif result["trades_placed"] == 0 and _is_top_of_hour():
-        # No trades this cycle and it's the top of the hour — send a heartbeat
-        # so the user knows the bot is alive even during quiet periods.
-        logger.info("Top of hour with no trades — sending heartbeat")
-        _send_heartbeat(market_open)
 
     logger.info("=== Cycle finished ===")
 
