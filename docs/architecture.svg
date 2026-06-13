@@ -1,0 +1,264 @@
+<svg width="1380" height="640" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#546e7a"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1380" height="640" fill="#f0f4f8"/>
+
+  <!-- Title Bar -->
+  <rect x="0" y="0" width="1380" height="42" fill="#1a237e"/>
+  <text x="690" y="27" text-anchor="middle" font-size="16" font-weight="bold" fill="white">
+    Autonomous Multi-Agent Trading Bot — End-to-End Process Flow
+  </text>
+
+  <!-- ===================================================== -->
+  <!-- SECTION 1: DATA SOURCES  x=10  center=130             -->
+  <!-- ===================================================== -->
+  <rect x="10" y="48" width="240" height="545" fill="#e3f2fd" rx="12" stroke="#90caf9" stroke-width="2"/>
+  <rect x="10" y="48" width="240" height="32" fill="#1565c0" rx="12"/>
+  <rect x="10" y="67"  width="240" height="13" fill="#1565c0"/>
+  <text x="130" y="69" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Data Sources</text>
+
+  <!-- Yahoo Finance -->
+  <rect x="22" y="88" width="216" height="92" fill="white" rx="8" stroke="#bbdefb" stroke-width="1.5"/>
+  <text x="130" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#0d47a1">Yahoo Finance</text>
+  <text x="130" y="121" text-anchor="middle" font-size="9.5" fill="#455a64">OHLCV price history (1 year)</text>
+  <text x="130" y="135" text-anchor="middle" font-size="9.5" fill="#455a64">Fundamentals · P/E · EPS</text>
+  <text x="130" y="149" text-anchor="middle" font-size="9.5" fill="#455a64">Analyst ratings · Target prices</text>
+  <text x="130" y="163" text-anchor="middle" font-size="9.5" fill="#455a64">News headlines · Insider trades</text>
+
+  <!-- CoinGecko -->
+  <rect x="22" y="190" width="216" height="78" fill="white" rx="8" stroke="#bbdefb" stroke-width="1.5"/>
+  <text x="130" y="208" text-anchor="middle" font-size="11" font-weight="bold" fill="#0d47a1">CoinGecko</text>
+  <text x="130" y="223" text-anchor="middle" font-size="9.5" fill="#455a64">Crypto market data &amp; prices</text>
+  <text x="130" y="237" text-anchor="middle" font-size="9.5" fill="#455a64">Top-100 coins by trading volume</text>
+  <text x="130" y="251" text-anchor="middle" font-size="9.5" fill="#455a64">Real-time coin metrics</text>
+
+  <!-- HuggingFace -->
+  <rect x="22" y="278" width="216" height="78" fill="white" rx="8" stroke="#bbdefb" stroke-width="1.5"/>
+  <text x="130" y="296" text-anchor="middle" font-size="11" font-weight="bold" fill="#0d47a1">HuggingFace</text>
+  <text x="130" y="311" text-anchor="middle" font-size="9.5" fill="#455a64">FinBERT NLP sentiment model</text>
+  <text x="130" y="325" text-anchor="middle" font-size="9.5" fill="#455a64">News headline classification</text>
+  <text x="130" y="339" text-anchor="middle" font-size="9.5" fill="#455a64">Positive / Negative / Neutral</text>
+
+  <!-- Yahoo Screeners -->
+  <rect x="22" y="366" width="216" height="68" fill="white" rx="8" stroke="#bbdefb" stroke-width="1.5"/>
+  <text x="130" y="384" text-anchor="middle" font-size="11" font-weight="bold" fill="#0d47a1">Yahoo Screeners</text>
+  <text x="130" y="399" text-anchor="middle" font-size="9.5" fill="#455a64">Day gainers · Volume spikes</text>
+  <text x="130" y="413" text-anchor="middle" font-size="9.5" fill="#455a64">Momentum stock picks</text>
+
+  <!-- SPY & VIX -->
+  <rect x="22" y="444" width="216" height="68" fill="white" rx="8" stroke="#bbdefb" stroke-width="1.5"/>
+  <text x="130" y="462" text-anchor="middle" font-size="11" font-weight="bold" fill="#0d47a1">SPY &amp; VIX</text>
+  <text x="130" y="477" text-anchor="middle" font-size="9.5" fill="#455a64">Market BULL / BEAR regime</text>
+  <text x="130" y="491" text-anchor="middle" font-size="9.5" fill="#455a64">Fear index · Macro context</text>
+
+  <text x="130" y="576" text-anchor="middle" font-size="10" fill="#1565c0" font-weight="bold">5 Data Providers</text>
+
+  <!-- Arrow 1 -->
+  <line x1="252" y1="320" x2="286" y2="320" stroke="#546e7a" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- ===================================================== -->
+  <!-- SECTION 2: ANALYSIS AGENTS  x=290  center=410         -->
+  <!-- ===================================================== -->
+  <rect x="290" y="48" width="240" height="545" fill="#e8f5e9" rx="12" stroke="#a5d6a7" stroke-width="2"/>
+  <rect x="290" y="48" width="240" height="32" fill="#2e7d32" rx="12"/>
+  <rect x="290" y="67"  width="240" height="13" fill="#2e7d32"/>
+  <text x="410" y="69" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Analysis Agents</text>
+
+  <!-- Fundamental Agent -->
+  <rect x="302" y="88" width="216" height="112" fill="white" rx="8" stroke="#c8e6c9" stroke-width="1.5"/>
+  <text x="410" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">Fundamental Agent</text>
+  <text x="410" y="121" text-anchor="middle" font-size="9.5" fill="#455a64">P/E · EPS · Revenue growth</text>
+  <text x="410" y="135" text-anchor="middle" font-size="9.5" fill="#455a64">Analyst ratings · Target price</text>
+  <text x="410" y="149" text-anchor="middle" font-size="9.5" fill="#455a64">News sentiment · Put/Call ratio</text>
+  <text x="410" y="163" text-anchor="middle" font-size="9.5" fill="#455a64">Insider activity · Earnings date</text>
+  <text x="410" y="177" text-anchor="middle" font-size="9.5" fill="#455a64">52-week high/low position</text>
+
+  <!-- Technical Agent -->
+  <rect x="302" y="210" width="216" height="112" fill="white" rx="8" stroke="#c8e6c9" stroke-width="1.5"/>
+  <text x="410" y="228" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">Technical Agent</text>
+  <text x="410" y="243" text-anchor="middle" font-size="9.5" fill="#455a64">RSI(14) · MACD(12,26,9)</text>
+  <text x="410" y="257" text-anchor="middle" font-size="9.5" fill="#455a64">Bollinger Bands · BB %B position</text>
+  <text x="410" y="271" text-anchor="middle" font-size="9.5" fill="#455a64">SMA 50/200 · Golden cross</text>
+  <text x="410" y="285" text-anchor="middle" font-size="9.5" fill="#455a64">OBV trend · Volume ratio (5/20d)</text>
+  <text x="410" y="299" text-anchor="middle" font-size="9.5" fill="#455a64">Computed from 1-year OHLCV</text>
+
+  <!-- Market Scanner -->
+  <rect x="302" y="332" width="216" height="96" fill="white" rx="8" stroke="#c8e6c9" stroke-width="1.5"/>
+  <text x="410" y="350" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">Market Scanner</text>
+  <text x="410" y="365" text-anchor="middle" font-size="9.5" fill="#455a64">Yahoo screener momentum picks</text>
+  <text x="410" y="379" text-anchor="middle" font-size="9.5" fill="#455a64">CoinGecko top-100 movers</text>
+  <text x="410" y="393" text-anchor="middle" font-size="9.5" fill="#455a64">Dynamic ticker discovery</text>
+  <text x="410" y="407" text-anchor="middle" font-size="9.5" fill="#455a64">Runs alongside fixed watchlist</text>
+
+  <!-- Macro Context -->
+  <rect x="302" y="438" width="216" height="96" fill="white" rx="8" stroke="#c8e6c9" stroke-width="1.5"/>
+  <text x="410" y="456" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">Macro Context</text>
+  <text x="410" y="471" text-anchor="middle" font-size="9.5" fill="#455a64">SPY vs SMA20 — BULL/BEAR</text>
+  <text x="410" y="485" text-anchor="middle" font-size="9.5" fill="#455a64">VIX level · Daily SPY change</text>
+  <text x="410" y="499" text-anchor="middle" font-size="9.5" fill="#455a64">Portfolio drawdown guard</text>
+  <text x="410" y="513" text-anchor="middle" font-size="9.5" fill="#455a64">Weights the Decision prompt</text>
+
+  <!-- Arrow 2 -->
+  <line x1="532" y1="320" x2="566" y2="320" stroke="#546e7a" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- ===================================================== -->
+  <!-- SECTION 3: DECISION ENGINE  x=570  center=690         -->
+  <!-- ===================================================== -->
+  <rect x="570" y="48" width="240" height="545" fill="#fafafa" rx="12" stroke="#bdbdbd" stroke-width="2"/>
+  <rect x="570" y="48" width="240" height="32" fill="#37474f" rx="12"/>
+  <rect x="570" y="67"  width="240" height="13" fill="#37474f"/>
+  <text x="690" y="69" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Decision Engine</text>
+
+  <!-- Bull Case -->
+  <rect x="582" y="88" width="216" height="145" fill="#e8f5e9" rx="10" stroke="#4caf50" stroke-width="2"/>
+  <rect x="582" y="88" width="216" height="28" fill="#4caf50" rx="10"/>
+  <rect x="582" y="104" width="216" height="12" fill="#4caf50"/>
+  <text x="690" y="107" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Bull Case</text>
+  <text x="690" y="128" text-anchor="middle" font-size="9.5" fill="#2e7d32">RSI oversold · MACD crossover</text>
+  <text x="690" y="142" text-anchor="middle" font-size="9.5" fill="#2e7d32">Strong analyst ratings/upgrades</text>
+  <text x="690" y="156" text-anchor="middle" font-size="9.5" fill="#2e7d32">Positive news sentiment</text>
+  <text x="690" y="170" text-anchor="middle" font-size="9.5" fill="#2e7d32">Above SMA50/200 · Golden cross</text>
+  <text x="690" y="184" text-anchor="middle" font-size="9.5" fill="#2e7d32">High volume breakout</text>
+  <text x="690" y="198" text-anchor="middle" font-size="9.5" fill="#2e7d32">BULL macro regime (SPY)</text>
+  <text x="690" y="212" text-anchor="middle" font-size="9.5" fill="#2e7d32">Low VIX · Positive momentum</text>
+
+  <!-- Debate label -->
+  <text x="690" y="252" text-anchor="middle" font-size="11" fill="#546e7a" font-weight="bold" font-style="italic">Bull vs Bear Debate</text>
+
+  <!-- Bear Case -->
+  <rect x="582" y="262" width="216" height="145" fill="#ffebee" rx="10" stroke="#f44336" stroke-width="2"/>
+  <rect x="582" y="262" width="216" height="28" fill="#f44336" rx="10"/>
+  <rect x="582" y="278" width="216" height="12" fill="#f44336"/>
+  <text x="690" y="281" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Bear Case</text>
+  <text x="690" y="302" text-anchor="middle" font-size="9.5" fill="#b71c1c">RSI overbought · Weak MACD</text>
+  <text x="690" y="316" text-anchor="middle" font-size="9.5" fill="#b71c1c">Analyst downgrades</text>
+  <text x="690" y="330" text-anchor="middle" font-size="9.5" fill="#b71c1c">Negative news sentiment</text>
+  <text x="690" y="344" text-anchor="middle" font-size="9.5" fill="#b71c1c">Below key moving averages</text>
+  <text x="690" y="358" text-anchor="middle" font-size="9.5" fill="#b71c1c">Low/declining volume</text>
+  <text x="690" y="372" text-anchor="middle" font-size="9.5" fill="#b71c1c">BEAR macro regime (SPY)</text>
+  <text x="690" y="386" text-anchor="middle" font-size="9.5" fill="#b71c1c">High VIX · Negative momentum</text>
+
+  <!-- LLM Failover -->
+  <rect x="582" y="418" width="216" height="155" fill="#fff8e1" rx="10" stroke="#ffc107" stroke-width="2"/>
+  <rect x="582" y="418" width="216" height="28" fill="#f57f17" rx="10"/>
+  <rect x="582" y="434" width="216" height="12" fill="#f57f17"/>
+  <text x="690" y="437" text-anchor="middle" font-size="12" font-weight="bold" fill="white">LLM Failover Chain</text>
+  <text x="690" y="458" text-anchor="middle" font-size="9.5" fill="#e65100">1. Cerebras — gpt-oss-120b (fastest)</text>
+  <text x="690" y="473" text-anchor="middle" font-size="9.5" fill="#555555">2. Groq — llama-3.3-70b</text>
+  <text x="690" y="488" text-anchor="middle" font-size="9.5" fill="#555555">3. Gemini — gemini-2.0-flash</text>
+  <text x="690" y="503" text-anchor="middle" font-size="9.5" fill="#555555">4. OpenRouter — llama-3.3-70b</text>
+  <text x="690" y="520" text-anchor="middle" font-size="9" fill="#e65100" font-style="italic">Auto-failover on 429 rate limit</text>
+  <text x="690" y="535" text-anchor="middle" font-size="9.5" fill="#e65100" font-weight="bold">Output: BUY / SELL / HOLD</text>
+  <text x="690" y="550" text-anchor="middle" font-size="9.5" fill="#e65100" font-weight="bold">+ confidence score 0–100%</text>
+
+  <!-- Arrow 3 -->
+  <line x1="812" y1="320" x2="846" y2="320" stroke="#546e7a" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- ===================================================== -->
+  <!-- SECTION 4: RISK MANAGER  x=850  center=970            -->
+  <!-- ===================================================== -->
+  <rect x="850" y="48" width="240" height="545" fill="#fff3e0" rx="12" stroke="#ffcc80" stroke-width="2"/>
+  <rect x="850" y="48" width="240" height="32" fill="#e65100" rx="12"/>
+  <rect x="850" y="67"  width="240" height="13" fill="#e65100"/>
+  <text x="970" y="69" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Risk Manager</text>
+
+  <!-- Confidence Filter -->
+  <rect x="862" y="88" width="216" height="88" fill="white" rx="8" stroke="#ffe0b2" stroke-width="1.5"/>
+  <text x="970" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#bf360c">Confidence Filter</text>
+  <text x="970" y="122" text-anchor="middle" font-size="9.5" fill="#455a64">Min 70% confidence to trade</text>
+  <text x="970" y="136" text-anchor="middle" font-size="9.5" fill="#c62828">Below 70% — skip, log reason</text>
+  <text x="970" y="150" text-anchor="middle" font-size="9.5" fill="#2e7d32">Above 70% — proceed to sizing</text>
+  <text x="970" y="164" text-anchor="middle" font-size="9.5" fill="#455a64">HOLD decisions always skipped</text>
+
+  <!-- Position Sizing -->
+  <rect x="862" y="186" width="216" height="118" fill="white" rx="8" stroke="#ffe0b2" stroke-width="1.5"/>
+  <text x="970" y="204" text-anchor="middle" font-size="11" font-weight="bold" fill="#bf360c">Position Sizing Bands</text>
+  <rect x="872" y="213" width="54" height="20" fill="#ef5350" rx="4"/>
+  <text x="899"  y="227" text-anchor="middle" font-size="9" fill="white" font-weight="bold">70–79%</text>
+  <text x="935" y="227" font-size="9.5" fill="#455a64">5% of available cash</text>
+  <rect x="872" y="238" width="54" height="20" fill="#ff9800" rx="4"/>
+  <text x="899"  y="252" text-anchor="middle" font-size="9" fill="white" font-weight="bold">80–89%</text>
+  <text x="935" y="252" font-size="9.5" fill="#455a64">10% of available cash</text>
+  <rect x="872" y="263" width="54" height="20" fill="#43a047" rx="4"/>
+  <text x="899"  y="277" text-anchor="middle" font-size="9" fill="white" font-weight="bold">90–100%</text>
+  <text x="935" y="277" font-size="9.5" fill="#455a64">20% of available cash</text>
+
+  <!-- Stop / Take Profit -->
+  <rect x="862" y="314" width="216" height="92" fill="white" rx="8" stroke="#ffe0b2" stroke-width="1.5"/>
+  <text x="970" y="332" text-anchor="middle" font-size="11" font-weight="bold" fill="#bf360c">Stop / Take Profit Sweep</text>
+  <text x="970" y="348" text-anchor="middle" font-size="9.5" fill="#c62828">Stop-loss: -7% from entry price</text>
+  <text x="970" y="362" text-anchor="middle" font-size="9.5" fill="#2e7d32">Take-profit: +15% from entry</text>
+  <text x="970" y="376" text-anchor="middle" font-size="9.5" fill="#455a64">Runs at start of every cycle</text>
+  <text x="970" y="390" text-anchor="middle" font-size="9.5" fill="#455a64">Before any new trades fire</text>
+
+  <!-- Position Limits -->
+  <rect x="862" y="416" width="216" height="92" fill="white" rx="8" stroke="#ffe0b2" stroke-width="1.5"/>
+  <text x="970" y="434" text-anchor="middle" font-size="11" font-weight="bold" fill="#bf360c">Position Limits</text>
+  <text x="970" y="450" text-anchor="middle" font-size="9.5" fill="#455a64">Max 5 concurrent positions</text>
+  <text x="970" y="464" text-anchor="middle" font-size="9.5" fill="#455a64">Max 3 stocks · Max 2 crypto</text>
+  <text x="970" y="478" text-anchor="middle" font-size="9.5" fill="#455a64">No duplicate symbols allowed</text>
+  <text x="970" y="492" text-anchor="middle" font-size="9.5" fill="#455a64">Cash floor protection</text>
+
+  <!-- Arrow 4 -->
+  <line x1="1092" y1="320" x2="1126" y2="320" stroke="#546e7a" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- ===================================================== -->
+  <!-- SECTION 5: OUTPUTS  x=1130  center=1250               -->
+  <!-- ===================================================== -->
+  <rect x="1130" y="48" width="240" height="545" fill="#ede7f6" rx="12" stroke="#ce93d8" stroke-width="2"/>
+  <rect x="1130" y="48" width="240" height="32" fill="#6a1b9a" rx="12"/>
+  <rect x="1130" y="67"  width="240" height="13" fill="#6a1b9a"/>
+  <text x="1250" y="69" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Execution &amp; Outputs</text>
+
+  <!-- Alpaca -->
+  <rect x="1142" y="88" width="216" height="147" fill="white" rx="8" stroke="#e1bee7" stroke-width="1.5"/>
+  <text x="1250" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a148c">Alpaca Paper Trading</text>
+  <text x="1250" y="121" text-anchor="middle" font-size="9.5" fill="#455a64">Market order execution</text>
+  <text x="1250" y="135" text-anchor="middle" font-size="9.5" fill="#455a64">BUY stocks &amp; crypto</text>
+  <text x="1250" y="149" text-anchor="middle" font-size="9.5" fill="#455a64">SELL positions on signal</text>
+  <text x="1250" y="163" text-anchor="middle" font-size="9.5" fill="#455a64">Real-time account balance</text>
+  <text x="1250" y="177" text-anchor="middle" font-size="9.5" fill="#455a64">Open positions &amp; unrealized P/L</text>
+  <text x="1250" y="191" text-anchor="middle" font-size="9.5" fill="#455a64">Full trade history</text>
+  <text x="1250" y="207" text-anchor="middle" font-size="9" fill="#6a1b9a" font-style="italic">$100,000 paper capital</text>
+  <text x="1250" y="222" text-anchor="middle" font-size="9" fill="#6a1b9a" font-style="italic">paper-api.alpaca.markets</text>
+
+  <!-- Telegram -->
+  <rect x="1142" y="245" width="216" height="138" fill="white" rx="8" stroke="#e1bee7" stroke-width="1.5"/>
+  <text x="1250" y="263" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a148c">Telegram Alerts</text>
+  <text x="1250" y="278" text-anchor="middle" font-size="9.5" fill="#2e7d32">BUY alert — units + cost + rationale</text>
+  <text x="1250" y="292" text-anchor="middle" font-size="9.5" fill="#c62828">SELL alert — P/L + entry price</text>
+  <text x="1250" y="306" text-anchor="middle" font-size="9.5" fill="#e65100">Risk exit — stop/take-profit hit</text>
+  <text x="1250" y="320" text-anchor="middle" font-size="9.5" fill="#455a64">Hourly heartbeat ping</text>
+  <text x="1250" y="334" text-anchor="middle" font-size="9.5" fill="#455a64">End-of-day P/L summary</text>
+  <text x="1250" y="348" text-anchor="middle" font-size="9.5" fill="#455a64">Bot error notifications</text>
+  <text x="1250" y="365" text-anchor="middle" font-size="9" fill="#6a1b9a" font-style="italic">Real-time push to your phone</text>
+
+  <!-- Dashboard -->
+  <rect x="1142" y="393" width="216" height="170" fill="white" rx="8" stroke="#e1bee7" stroke-width="1.5"/>
+  <text x="1250" y="411" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a148c">Streamlit Dashboard</text>
+  <text x="1250" y="427" text-anchor="middle" font-size="9.5" fill="#455a64">Overview — portfolio P/L metrics</text>
+  <text x="1250" y="441" text-anchor="middle" font-size="9.5" fill="#455a64">Positions — open holdings</text>
+  <text x="1250" y="455" text-anchor="middle" font-size="9.5" fill="#455a64">Momentum — screener picks</text>
+  <text x="1250" y="469" text-anchor="middle" font-size="9.5" fill="#455a64">History — all past trades</text>
+  <text x="1250" y="483" text-anchor="middle" font-size="9.5" fill="#455a64">Reports — agent analysis</text>
+  <text x="1250" y="497" text-anchor="middle" font-size="9.5" fill="#455a64">Prices — live quotes</text>
+  <text x="1250" y="511" text-anchor="middle" font-size="9.5" fill="#455a64">Explore — any stock or crypto</text>
+  <text x="1250" y="528" text-anchor="middle" font-size="9" fill="#6a1b9a" font-style="italic">Auto-refresh every 10 seconds</text>
+  <text x="1250" y="543" text-anchor="middle" font-size="9" fill="#6a1b9a" font-style="italic">Live on Streamlit Cloud</text>
+
+  <!-- ===================================================== -->
+  <!-- BOTTOM PHASE LABELS                                    -->
+  <!-- ===================================================== -->
+  <text x="130"  y="614" text-anchor="middle" font-size="11" fill="#1565c0" font-weight="bold">INPUTS</text>
+  <text x="410"  y="614" text-anchor="middle" font-size="11" fill="#2e7d32" font-weight="bold">ANALYSIS</text>
+  <text x="690"  y="614" text-anchor="middle" font-size="11" fill="#37474f" font-weight="bold">DECISION</text>
+  <text x="970"  y="614" text-anchor="middle" font-size="11" fill="#e65100" font-weight="bold">RISK CONTROL</text>
+  <text x="1250" y="614" text-anchor="middle" font-size="11" fill="#6a1b9a" font-weight="bold">OUTPUTS</text>
+
+</svg>

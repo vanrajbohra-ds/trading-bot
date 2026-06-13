@@ -40,66 +40,7 @@ flowchart TD
 
 End-to-end process flow — from raw data sources through AI analysis to trade execution and alerts.
 
-```mermaid
-flowchart LR
-    subgraph SRC["Data Sources"]
-        YF["Yahoo Finance\nPrice history, fundamentals\nAnalyst ratings, insider trades\nNews headlines"]
-        HF["HuggingFace\nNews sentiment model"]
-        CG["CoinGecko\nCrypto market data\nTop-100 by volume"]
-        SCRN["Yahoo Screeners\nDay gainers, momentum stocks"]
-        SPYVIX["SPY and VIX\nMarket regime data"]
-    end
-
-    subgraph ANALYSIS["AI Analysis"]
-        FA["Fundamental Agent\nP/E, EPS, revenue growth\nAnalyst ratings, sentiment\nInsider activity"]
-        TA["Technical Agent\nRSI, MACD, Bollinger Bands\nSMA 50 and 200, OBV\nVolume ratio, golden cross"]
-        SCAN["Market Scanner\nMomentum picks from\nscreeners and CoinGecko"]
-        MACRO["Macro Context\nSPY BULL/BEAR regime\nVIX fear level\nPortfolio drawdown"]
-    end
-
-    subgraph LLM["LLM Decision Engine"]
-        DA["Decision Agent\nBull vs Bear debate\nWeighs all signals"]
-        CB["1. Cerebras\ngpt-oss-120b - fastest"]
-        GR["2. Groq\nllama-3.3-70b"]
-        GE["3. Gemini\ngemini-2.0-flash"]
-        OR["4. OpenRouter\nllama-3.3-70b - last resort"]
-        DA --> CB
-        CB -->|rate limit| GR
-        GR -->|rate limit| GE
-        GE -->|rate limit| OR
-    end
-
-    RM["Risk Manager\nConfidence filter - min 70 pct\nPosition sizing by confidence band\nStop-loss and take-profit sweep"]
-
-    subgraph OUT["Outputs"]
-        ALP["Alpaca Paper Trading\nBUY and SELL order execution\nReal-time positions and history"]
-        TG["Telegram Bot\nTrade alerts with P/L\nHourly heartbeat, EOD summary"]
-        DASH["Streamlit Dashboard\n7 tabs - live portfolio\nExplore any stock or crypto"]
-    end
-
-    YF --> FA
-    YF --> TA
-    HF --> FA
-    CG --> FA
-    CG --> SCAN
-    SCRN --> SCAN
-    SPYVIX --> MACRO
-
-    FA --> DA
-    TA --> DA
-    SCAN --> DA
-    MACRO --> DA
-
-    CB --> RM
-    GR --> RM
-    GE --> RM
-    OR --> RM
-
-    RM --> ALP
-    RM --> TG
-    ALP --> DASH
-    TG --> DASH
-```
+![Component Architecture](docs/architecture.svg)
 
 ---
 
