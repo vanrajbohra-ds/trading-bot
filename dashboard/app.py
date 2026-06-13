@@ -1334,11 +1334,22 @@ with t_exp:
                 else:
                     st.caption("No fundamental data available")
 
+            # ── Insider (stocks only) — above news ───────────────────────────
+            if not is_crypto:
+                _ins = getattr(fund, "insider_activity", None) or []
+                if _ins:
+                    st.divider()
+                    st.markdown("**🧑‍💼 Insider Activity**")
+                    for _a in _ins[:4]:
+                        _ii = "🔴" if any(w in _a.lower() for w in ("sale", "sell")) else "🟢"
+                        st.markdown(f"<span style='font-size:.83rem'>{_ii}&nbsp;{_a}</span>",
+                                    unsafe_allow_html=True)
+
             # ── News ──────────────────────────────────────────────────────────
             _news = _fetch_explore_news(yf_sym)
             if _news:
                 st.divider()
-                st.markdown("**📰 Recent News** &nbsp;<span style='color:#666;font-size:.8rem'>sentiment tags: 🟢 positive · 🔴 negative · ⚪ neutral</span>",
+                st.markdown("**📰 Recent News** &nbsp;<span style='color:#666;font-size:.8rem'>🟢 positive · 🔴 negative · ⚪ neutral</span>",
                             unsafe_allow_html=True)
                 _nc1, _nc2 = st.columns(2)
                 for _i, _n in enumerate(_news[:8]):
@@ -1350,17 +1361,6 @@ with t_exp:
                         f"<span style='color:#666'> — {_n['source']}</span></div>",
                         unsafe_allow_html=True,
                     )
-
-            # ── Insider (stocks only) ─────────────────────────────────────────
-            if not is_crypto:
-                _ins = getattr(fund, "insider_activity", None) or []
-                if _ins:
-                    st.divider()
-                    st.markdown("**🧑‍💼 Insider Activity**")
-                    for _a in _ins[:4]:
-                        _ii = "🔴" if any(w in _a.lower() for w in ("sale", "sell")) else "🟢"
-                        st.markdown(f"<span style='font-size:.83rem'>{_ii}&nbsp;{_a}</span>",
-                                    unsafe_allow_html=True)
 
             st.caption(
                 f"{alpaca_sym} · Technical signals derived from 1-year OHLCV (RSI, MACD, BB, OBV, volume ratio, golden cross) · "
