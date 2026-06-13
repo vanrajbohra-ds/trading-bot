@@ -61,6 +61,26 @@ def _ok_to_buy(account: dict) -> bool:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+def _build_macro_context(bull_market: bool, account: dict) -> str:
+    """One-paragraph market backdrop injected into every LLM decision prompt."""
+    regime = (
+        "BULL — SPY is above its 20-day SMA (stock buys permitted)"
+        if bull_market else
+        "BEAR — SPY is below its 20-day SMA (raise confidence bar by 5 pts for any BUY)"
+    )
+    drawdown = (STARTING_CAPITAL - account["portfolio_value"]) / STARTING_CAPITAL * 100
+    status = (
+        f"{drawdown:.1f}% drawdown from ${STARTING_CAPITAL:,.0f} starting capital"
+        if drawdown > 0 else
+        f"{abs(drawdown):.1f}% gain above starting capital"
+    )
+    return (
+        "MACRO CONTEXT:\n"
+        f"  Market Regime:    {regime}\n"
+        f"  Portfolio Status: {status}"
+    )
+
+
 def _investable_cash(account: dict, confidence: int = 0) -> float:
     """Cash available after the 20% reserve floor.
     Reserve unlocks partially only at >= RESERVE_DEPLOY_CONFIDENCE."""
@@ -111,7 +131,8 @@ def _is_momentum_signal(technical) -> bool:
 
 def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                      decision_agent, account, positions,
-                     bull_market: bool = True) -> tuple:
+                     bull_market: bool = True,
+                     macro_context: str = "") -> tuple:
     """Core WATCHLIST stocks. Returns (trades_placed, trades_sold)."""
     # Exclude crypto momentum symbols so they're never treated as stocks
     excl = set(MOMENTUM_CRYPTO_UNIVERSE)
@@ -143,6 +164,7 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                 available_cash=account["cash"],
                 current_qty=pos["qty"], avg_entry_price=pos["avg_entry_price"],
                 open_position_count=sum(1 for p in positions.values() if p["qty"] > 0),
+                macro_context=macro_context,
             )
         except Exception as e:
             telegram.error_alert(f"LLM {symbol}", str(e)); continue
@@ -195,7 +217,8 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
 
 def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                       decision_agent, account, positions,
-                      recently_bought: set = None) -> tuple:
+                      recently_bought: set = None,
+                      macro_context: str = "") -> tuple:
     """Core crypto (BTC, SOL). Returns (trades_placed, trades_sold)."""
     excl = set(MOMENTUM_CRYPTO_UNIVERSE)
     core_crypto = {s: p for s, p in positions.items() if "/" in s and s not in excl}
@@ -230,6 +253,7 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                 available_cash=account["cash"],
                 current_qty=pos["qty"], avg_entry_price=pos["avg_entry_price"],
                 open_position_count=sum(1 for p in positions.values() if p["qty"] > 0),
+                macro_context=macro_context,
             )
         except Exception as e:
             telegram.error_alert(f"LLM {alpaca_sym}", str(e)); continue
@@ -292,7 +316,8 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
 def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                         decision_agent, account, positions,
                         stock_market_open: bool = True, bull_market: bool = True,
-                        recently_bought: set = None) -> tuple:
+                        recently_bought: set = None,
+                        macro_context: str = "") -> tuple:
     """
     Hunts for momentum across a broad universe of high-beta stocks + volatile crypto.
 
@@ -425,6 +450,7 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
                 available_cash=account["cash"],
                 current_qty=pos["qty"], avg_entry_price=pos["avg_entry_price"],
                 open_position_count=sum(1 for p in positions.values() if p["qty"] > 0),
+                macro_context=macro_context,
             )
         except Exception as e:
             telegram.error_alert(f"LLM {sym}", str(e)); continue
@@ -563,6 +589,10 @@ def run_cycle() -> dict:
     # API hasn't caught up yet (typically 2-3 min lag after a crypto fill).
     recently_bought = alpaca.get_recent_buy_symbols(lookback_minutes=15)
 
+    # Build macro context block — injected into every LLM decision prompt so the
+    # model knows the broad market regime and portfolio health before deciding.
+    macro_context = _build_macro_context(bull_market, account)
+
     logger.info(
         f"Account: cash=${account['cash']:.2f} portfolio=${account['portfolio_value']:.2f} | "
         f"Positions: {list(positions.keys())} | "
@@ -575,7 +605,8 @@ def run_cycle() -> dict:
     if stock_market_open:
         s_placed, s_sold = _run_stock_cycle(
             alpaca, risk, telegram, fundamental_agent, technical_agent,
-            decision_agent, account, positions, bull_market=bull_market)
+            decision_agent, account, positions,
+            bull_market=bull_market, macro_context=macro_context)
     else:
         logger.info("Stock market closed — skipping core stock cycle")
 
@@ -583,14 +614,14 @@ def run_cycle() -> dict:
     c_placed, c_sold = _run_crypto_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent,
         decision_agent, account, positions,
-        recently_bought=recently_bought)
+        recently_bought=recently_bought, macro_context=macro_context)
 
     # Momentum: crypto 24/7, stocks only in bull regime
     m_placed, m_sold = _run_momentum_cycle(
         alpaca, risk, telegram, fundamental_agent, technical_agent,
         decision_agent, account, positions,
         stock_market_open=stock_market_open, bull_market=bull_market,
-        recently_bought=recently_bought)
+        recently_bought=recently_bought, macro_context=macro_context)
 
     total_placed = s_placed + c_placed + m_placed
     total_sold   = s_sold   + c_sold   + m_sold

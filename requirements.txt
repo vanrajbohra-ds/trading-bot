@@ -4,4 +4,5 @@ google-genai>=2.0.0
 requests>=2.31.0
 pandas>=2.3.0
 numpy>=1.26.4
-# groq is called via requests (openai-compatible REST), no extra package needed
+# groq and openrouter are called via requests (openai-compatible REST)
+cerebras-cloud-sdk>=1.21.0

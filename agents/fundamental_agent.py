@@ -9,17 +9,21 @@ class FundamentalReport:
     asset_type: str = "stock"       # "stock" or "crypto"
     fetch_error: Optional[str] = None
     current_price: Optional[float] = None
-    # Stock fields
+    # Valuation
     pe_ratio: Optional[float] = None
     eps: Optional[float] = None
     revenue_growth: Optional[float] = None
     earnings_growth: Optional[float] = None
     debt_to_equity: Optional[float] = None
     roe: Optional[float] = None
+    # Analyst signals
     analyst_recommendation: Optional[str] = None
     analyst_target_price: Optional[float] = None
     recent_upgrades: list = field(default_factory=list)
     recent_earnings_surprises: list = field(default_factory=list)
+    # News & insider (Phase 1 additions)
+    recent_news: list = field(default_factory=list)      # last 5 headlines
+    insider_activity: list = field(default_factory=list) # recent insider transactions
     # Crypto fields
     market_cap: Optional[float] = None
     circulating_supply: Optional[float] = None
@@ -49,6 +53,14 @@ class FundamentalReport:
             lines.append(f"  Recent Upgrades:      {', '.join(self.recent_upgrades[:3])}")
         if self.recent_earnings_surprises:
             lines.append(f"  Earnings Surprises:   {', '.join(self.recent_earnings_surprises[:4])}")
+        if self.recent_news:
+            lines.append("  Recent News:")
+            for headline in self.recent_news[:5]:
+                lines.append(f"    • {headline}")
+        if self.insider_activity:
+            lines.append("  Insider Activity:")
+            for activity in self.insider_activity[:3]:
+                lines.append(f"    • {activity}")
         return "\n".join(lines)
 
     def _crypto_prompt(self) -> str:
@@ -65,6 +77,10 @@ class FundamentalReport:
             lines.append(f"  52-Week Low:        ${self.week52_low:,.4f} ({pct_from_low:+.1f}% from now)")
         if self.volume_24h:
             lines.append(f"  24h Volume:         ${self.volume_24h/1e6:.1f}M")
+        if self.recent_news:
+            lines.append("  Recent News:")
+            for headline in self.recent_news[:3]:
+                lines.append(f"    • {headline}")
         lines.append("  (No P/E or EPS — use technical analysis for primary signal)")
         return "\n".join(lines)
 
@@ -78,6 +94,55 @@ class FundamentalAgent:
         if is_crypto:
             return self._analyze_crypto(symbol, lookup)
         return self._analyze_stock(symbol, lookup)
+
+    def _fetch_news(self, ticker) -> list:
+        """Return up to 5 recent headline strings. Handles yfinance API variations."""
+        headlines = []
+        try:
+            raw = None
+            if hasattr(ticker, "get_news"):
+                try:
+                    raw = ticker.get_news()
+                except Exception:
+                    pass
+            if raw is None:
+                raw = ticker.news
+            for item in (raw or [])[:5]:
+                if not isinstance(item, dict):
+                    continue
+                title = item.get("title") or item.get("headline", "")
+                pub   = item.get("publisher") or item.get("source", "")
+                if title:
+                    entry = title[:120]
+                    if pub:
+                        entry += f" [{pub}]"
+                    headlines.append(entry)
+        except Exception:
+            pass
+        return headlines
+
+    def _fetch_insider_activity(self, ticker) -> list:
+        """Return up to 3 recent insider transaction strings."""
+        lines = []
+        try:
+            it = ticker.insider_transactions
+            if it is None or it.empty:
+                return lines
+            for _, row in it.head(4).iterrows():
+                try:
+                    txn    = str(row.get("Transaction") or row.get("Text") or "").strip()[:30]
+                    name   = str(row.get("Insider", "")).strip()
+                    pos    = str(row.get("Position", "")).strip()[:25]
+                    shares = int(row.get("Shares") or 0)
+                    val    = int(row.get("Value") or 0)
+                    date   = str(row.get("Start Date") or "")[:10]
+                    if txn and shares:
+                        lines.append(f"{txn}: {name} ({pos}) {shares:,} shares ${val:,} on {date}")
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return lines
 
     def _analyze_stock(self, symbol: str, yf_symbol: str) -> FundamentalReport:
         try:
@@ -126,6 +191,8 @@ class FundamentalAgent:
                 current_price=current_price,
                 recent_upgrades=upgrades,
                 recent_earnings_surprises=earnings_surprises,
+                recent_news=self._fetch_news(ticker),
+                insider_activity=self._fetch_insider_activity(ticker),
             )
         except Exception as e:
             return FundamentalReport(symbol=symbol, fetch_error=str(e))
@@ -150,6 +217,7 @@ class FundamentalAgent:
                 week52_high=info.get("fiftyTwoWeekHigh"),
                 week52_low=info.get("fiftyTwoWeekLow"),
                 volume_24h=info.get("volume24Hr") or info.get("regularMarketVolume"),
+                recent_news=self._fetch_news(ticker),
             )
         except Exception as e:
             return FundamentalReport(symbol=symbol, asset_type="crypto", fetch_error=str(e))

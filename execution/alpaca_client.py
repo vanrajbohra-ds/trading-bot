@@ -141,29 +141,43 @@ class AlpacaClient:
             logger.warning(f"Could not fetch today's orders: {e}")
             return []
 
-    def get_recent_buy_symbols(self, lookback_minutes: int = 15) -> set:
-        """Return symbols with any non-cancelled buy order in the last N minutes.
-        Guards against duplicate crypto buying when the positions API lags after a fill."""
+    def get_recent_buy_symbols(self, lookback_minutes: int = 15, cancel_lookback_minutes: int = 90) -> set:
+        """Return symbols to skip for BUY:
+        - Any active/filled buy in the last `lookback_minutes` → avoid immediate re-buy after fill
+        - Any cancelled buy in the last `cancel_lookback_minutes` → break ghost-order retry loops
+          (e.g. BTC/USD orders that Alpaca accepts but never fills, so cleanup cancels them every 5 min)
+        """
         import datetime
-        cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=lookback_minutes)
-        cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = datetime.datetime.utcnow()
+        cutoff_cancel = now - datetime.timedelta(minutes=cancel_lookback_minutes)
+        cutoff_active = now - datetime.timedelta(minutes=lookback_minutes)
+        cutoff_str = cutoff_cancel.strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
             orders = self._get("/orders", params={
                 "status": "all",
                 "after": cutoff_str,
-                "limit": 100,
+                "limit": 200,
                 "direction": "asc",
             })
             if not isinstance(orders, list):
                 return set()
-            syms = {
-                o["symbol"] for o in orders
-                if o.get("side") == "buy"
-                and o.get("status") not in {"canceled", "expired", "replaced"}
-            }
-            if syms:
-                logger.info(f"[dedup] Recent buys in last {lookback_minutes}min: {syms}")
-            return syms
+            blocked = set()
+            for o in orders:
+                if o.get("side") != "buy":
+                    continue
+                sym    = o.get("symbol", "")
+                status = o.get("status", "")
+                created = o.get("created_at", "")
+                if status == "canceled":
+                    # A cancelled order in the last 90 min blocks retries for that symbol
+                    blocked.add(sym)
+                elif status not in {"expired", "replaced"}:
+                    # Active / filled order in the last 15 min blocks immediate re-buy
+                    if created >= cutoff_active.strftime("%Y-%m-%dT%H:%M:%SZ"):
+                        blocked.add(sym)
+            if blocked:
+                logger.info(f"[dedup] Blocked symbols (recent buys/cancels): {blocked}")
+            return blocked
         except Exception as e:
             logger.warning(f"get_recent_buy_symbols failed ({e}) — allowing buys")
             return set()

@@ -14,7 +14,7 @@ POSITION_SIZE_BANDS = [
 ]
 
 # ── Core Crypto ───────────────────────────────────────────────────────────────
-CRYPTO_WATCHLIST = ["BTC/USD", "SOL/USD"]
+CRYPTO_WATCHLIST = ["SOL/USD"]  # BTC/USD removed — never fills on paper trading (65 cancelled orders, 0 filled)
 CRYPTO_YFINANCE_MAP = {
     "BTC/USD":  "BTC-USD",
     "SOL/USD":  "SOL-USD",
@@ -59,8 +59,12 @@ RESERVE_DEPLOY_CONFIDENCE = 88    # minimum confidence % to tap the reserve
 RESERVE_MAX_DEPLOY_PCT    = 0.50  # deploy at most 50% of the reserve floor per trade
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
-LLM_PROVIDER = "groq"
-GROQ_MODEL   = "llama-3.3-70b-versatile"
-GEMINI_MODEL = "gemini-2.0-flash"
+# LLM_PROVIDER is kept for legacy references but decision_agent now uses
+# automatic failover: Cerebras → Groq → Gemini → OpenRouter
+LLM_PROVIDER     = "cerebras"
+CEREBRAS_MODEL   = "gpt-oss-120b"
+GROQ_MODEL       = "llama-3.3-70b-versatile"
+GEMINI_MODEL     = "gemini-2.0-flash"
+OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
 HIST_PERIOD = "6mo"
