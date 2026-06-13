@@ -4,172 +4,141 @@ An autonomous paper trading system that runs 24/7. Three AI agents analyze stock
 
 ---
 
-## How It Works — Big Picture
+## System Architecture
 
-```
-cron-job.org  ──►  GitHub Actions  ──►  main.py  ──►  orchestrator.py
-  every 2 min         (free tier)         entry           3 cycles run
-                                          point           in parallel
-```
+```mermaid
+flowchart TD
+    CRON["⏱️ cron-job.org\nevery 2 minutes"]
+    GH["⚙️ GitHub Actions\nfree tier"]
+    MAIN["🚀 main.py\nentry point"]
 
-Every 2 minutes:
-1. **Stock Cycle** runs during NYSE hours (Mon–Fri 9:30–4:00 ET)
-2. **Crypto Cycle** runs 24/7 — crypto never sleeps
-3. **Momentum Cycle** runs whenever market is open — hunts live trending stocks + volatile crypto
+    CRON -->|POST workflow_dispatch| GH --> MAIN
 
----
+    MAIN -->|"📈 market hours only\nAAPL · TSLA · NVDA · MSFT · AMZN"| SC["Stock Cycle"]
+    MAIN -->|"🔗 24 / 7\nSOL/USD"| CC["Crypto Cycle"]
+    MAIN -->|"🚀 market hours\nlive screener"| MC["Momentum Cycle"]
 
-## Component Architecture
+    SC & CC & MC --> FA
+    SC & CC & MC --> TA
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         ENTRY LAYER                                  │
-│                                                                      │
-│   cron-job.org (every 2 min)                                         │
-│        │                                                             │
-│        ▼                                                             │
-│   GitHub Actions  ──►  main.py                                       │
-│                         │                                            │
-│                         ├─ Is it just after 4 PM?  → daily_summary  │
-│                         ├─ No trades this hour?    → heartbeat ping  │
-│                         └─ Otherwise               → run_cycle()     │
-└─────────────────────────┬───────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                       ORCHESTRATOR LAYER                             │
-│                        (orchestrator.py)                             │
-│                                                                      │
-│   ┌─────────────────────┐  ┌──────────────────────┐                 │
-│   │   STOCK CYCLE        │  │    CRYPTO CYCLE       │                │
-│   │  (market hours only) │  │    (24/7 always)      │                │
-│   │                      │  │                       │                │
-│   │  Core watchlist:     │  │  Core watchlist:      │                │
-│   │  AAPL TSLA NVDA      │  │  SOL/USD              │                │
-│   │  MSFT AMZN + custom  │  │                       │                │
-│   │                      │  │  Cap: max 35% of      │                │
-│   │  Max 5 positions     │  │  total portfolio      │                │
-│   └──────────┬───────────┘  └──────────┬────────────┘                │
-│              │                         │                             │
-│              └────────────┬────────────┘                             │
-│                           │                                          │
-│   ┌───────────────────────▼──────────────────────────────────────┐  │
-│   │                  MOMENTUM CYCLE                               │  │
-│   │                  (market hours)                               │  │
-│   │                                                               │  │
-│   │  Step 1: market_scanner.py                                    │  │
-│   │          Yahoo Finance screeners → most_actives + day_gainers │  │
-│   │          No hardcoded list — discovers what's moving TODAY    │  │
-│   │                                                               │  │
-│   │  Step 2: Technical pre-filter (FREE — no LLM)                 │  │
-│   │          volume ≥ 1.8×avg  AND  RSI 55–75  AND  MACD > 0     │  │
-│   │          Pass 2/3 checks → send to LLM   Fail → skip          │  │
-│   │                                                               │  │
-│   │  Step 3: LLM decision (only on 2–3 pre-filtered candidates)   │  │
-│   │          Tight exits: stocks −4%/+8%  crypto −6%/+12%        │  │
-│   │          Shared 10% portfolio budget across stocks + crypto   │  │
-│   └───────────────────────────────────────────────────────────────┘  │
-└──────────────────────────┬──────────────────────────────────────────┘
-                           │
-          ┌────────────────┼─────────────────┐
-          ▼                ▼                 ▼
-┌─────────────────┐ ┌───────────────┐ ┌───────────────────┐
-│   AGENT LAYER   │ │ EXECUTION     │ │   NOTIFICATION    │
-│                 │ │ LAYER         │ │   LAYER           │
-│ fundamental_    │ │               │ │                   │
-│  agent.py       │ │ alpaca_       │ │ telegram_         │
-│  • stocks: P/E, │ │  client.py    │ │  notifier.py      │
-│    EPS, analyst │ │  • REST API   │ │  • trade alert    │
-│    news,insider │ │  • stock +    │ │    (every trade)  │
-│  • crypto: mcap,│ │    crypto     │ │  • risk exit      │
-│    52w range,   │ │    orders     │ │  • error alert    │
-│    news         │ │  • dedup      │ │  • EOD summary    │
-│                 │ │    guard      │ │  • hourly         │
-│ technical_      │ │               │ │    heartbeat      │
-│  agent.py       │ │ risk_         │ │                   │
-│  • RSI, MACD,   │ │  manager.py   │ └───────────────────┘
-│    BB, SMA,     │ │  • stop-loss  │
-│    OBV, volume  │ │  • take-profit│
-│                 │ │  • position   │
-│ decision_       │ │    sizing     │
-│  agent.py       │ │  • reserve    │
-│  • 4-provider   │ │    floor      │
-│    LLM failover │ │               │
-│  • bull/bear    │ └───────────────┘
-│    debate       │
-└─────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        DASHBOARD LAYER                               │
-│                        (dashboard/app.py)                            │
-│                                                                      │
-│   Streamlit Cloud — auto-deploys on every push to main               │
-│                                                                      │
-│   [📊 Overview] [💼 Positions] [🚀 Momentum] [📜 History]            │
-│   [📋 Reports]  [📡 Prices]                                          │
-│                                                                      │
-│   Single-view layout — no scrolling on standard 1080p screen         │
-└─────────────────────────────────────────────────────────────────────┘
+    subgraph AGENTS ["🤖 Research Team"]
+        FA["📊 Fundamental Agent\nP/E · EPS · ROE · Analyst target\nNews headlines · Insider trades"]
+        TA["📈 Technical Agent\nRSI · MACD · Bollinger Bands\nSMA 50/200 · OBV · Volume ratio"]
+    end
+
+    subgraph DEBATE ["💬 Bull / Bear Debate  —  Decision Agent"]
+        MACRO["🌍 Macro Context\nSPY regime BULL / BEAR\nPortfolio drawdown %"]
+        BULL["🟢 Bull Case\n3 strongest buy signals\nwith specific data points"]
+        BEAR["🔴 Bear Case\n3 strongest sell signals\nwith specific data points"]
+        LLM["⚡ LLM Verdict\nConfidence 0 – 100\nBUY · SELL · HOLD"]
+    end
+
+    FA --> BULL & BEAR
+    TA --> BULL & BEAR
+    MACRO --> LLM
+    BULL & BEAR --> LLM
+
+    LLM --> RM
+
+    subgraph RISK ["🛡️ Risk Management"]
+        RM["Position Sizer\nConf 65–79% → 5% cash\nConf 80–89% → 10% cash\nConf ≥ 90%  → 20% cash"]
+        SL["Stop / Take Monitor\nStocks   −7% / +15%\nCrypto  −12% / +25%\nMomentum −4% / +8%"]
+    end
+
+    RM --> SL
+    SL --> ALP["🏦 Alpaca\nPaper Trading API"]
+    SL --> TG["📱 Telegram\nTrade alerts · Heartbeat\nRisk exits · EOD summary"]
+    SL --> DASH["🖥️ Streamlit\nLive dashboard\ntrading-bot-test.streamlit.app"]
 ```
 
 ---
 
-## The Three AI Agents
+## LLM Failover Chain
 
-### 1. Fundamental Agent
-Fetches data via `yfinance` — adapts automatically to stock vs crypto input.
+Every decision automatically falls through to the next provider on any 429 / quota error — the bot never fails on an LLM call during normal trading.
 
-**Stocks:** P/E ratio · EPS · revenue growth · earnings growth · debt/equity · ROE · analyst rating + price target · recent upgrades/downgrades · earnings surprises · **last 5 news headlines** · **recent insider transactions** (name, role, shares, dollar value)
+```mermaid
+flowchart LR
+    REQ(["🤖 LLM\nRequest"])
 
-**Crypto:** market cap · circulating supply · 52-week range · 24h volume · **last 3 news headlines**
-
-### 2. Technical Agent
-Computes price action indicators on 6 months of OHLCV data. Same logic for stocks and crypto.
-
-| Indicator | What It Signals |
-|-----------|----------------|
-| RSI (14) | < 30 oversold → potential buy · > 70 overbought → potential sell |
-| MACD histogram | Positive = bullish momentum · Negative = bearish momentum |
-| Bollinger Bands | Near lower band = potential bounce |
-| SMA 50 / 200 | Golden cross = bullish trend · Death cross = bearish trend |
-| OBV | Rising = accumulation · Falling = distribution |
-| Volume ratio | 5d vs 20d avg — confirms whether a move has real money behind it |
-
-### 3. Decision Agent — 4-Provider LLM Failover
-
-Every decision uses an automatic failover chain. Any 429 / quota error silently moves to the next provider — the bot never fails on an LLM call during normal trading.
-
-```
-Cerebras (gpt-oss-120b, 120B reasoning model, ~2s)
-    │  rate-limited? ↓
-Groq (llama-3.3-70b-versatile, ~3s)
-    │  rate-limited? ↓
-Gemini (gemini-2.0-flash, ~5s)
-    │  rate-limited? ↓
-OpenRouter (llama-3.3-70b:free, last resort)
+    REQ --> C["⚡ Cerebras\ngpt-oss-120b\n120B reasoning model\n~2 seconds"]
+    C -->|✅ success| OUT(["📋 Decision\nJSON"])
+    C -->|"429 / quota"| G["🔶 Groq\nllama-3.3-70b\n~3 seconds"]
+    G -->|✅ success| OUT
+    G -->|"429 / quota"| GE["🔵 Gemini\ngemini-2.0-flash\n~5 seconds"]
+    GE -->|✅ success| OUT
+    GE -->|"429 / quota"| OR["🟣 OpenRouter\nllama-3.3-70b:free\nlast resort"]
+    OR --> OUT
 ```
 
-**Mandatory Bull/Bear Debate — every decision:**
+---
 
-Before outputting any action, the LLM must:
-1. **BULL CASE** — 3 strongest data-backed reasons to BUY (cite specific numbers)
-2. **BEAR CASE** — 3 strongest data-backed reasons NOT to buy / to SELL (cite specific numbers)
-3. **VERDICT** — only BUY/SELL when one side clearly dominates
+## Capital Allocation
 
-This prevents one-sided bias and forces the model to find the best counter-argument before committing.
+```mermaid
+pie title $100,000 Portfolio — Target Allocation
+    "Cash Reserve — locked dry powder" : 20
+    "Core Stocks — up to 5 positions" : 45
+    "Core Crypto — SOL/USD (max 35%)" : 25
+    "Momentum Budget — stocks + crypto" : 10
+```
 
-**Every prompt includes:**
-- Macro context (SPY regime: BULL/BEAR vs SMA20 + portfolio drawdown %)
-- Portfolio context (available cash, current holding, open position count)
-- Fundamental report (incl. news + insider data)
-- Technical report
+| Tier | Budget | Rules |
+|---|---|---|
+| 🔒 Cash Reserve | **20%** always locked | Unlocks at confidence ≥ 88% (up to 50% of reserve per trade) |
+| 📈 Core Stocks | Up to 65% investable pool | Max 5 positions · −7% stop / +15% take |
+| 🔗 Core Crypto | Max 35% of total portfolio | SOL/USD only · −12% stop / +25% take |
+| 🚀 Momentum | **10%** shared budget | Live-discovered stocks + DOGE/AVAX/LINK/UNI · −4%/+8% stops |
 
-**Calibration rules baked into system prompt:**
-- BEAR market regime → raise confidence bar by +5 pts for any BUY
-- Insider SELLING → strong bear signal
-- Insider BUYING → moderate bull signal
-- Confidence < 65 → HOLD (never trades on weak signals)
+---
+
+## Momentum Discovery Pipeline
+
+```mermaid
+flowchart LR
+    YF["📡 Yahoo Finance\nScreeners"]
+
+    YF -->|"most actives\n(highest volume)"| A["⚡ Most Active\nby Volume"]
+    YF -->|"top gainers\n(biggest % rise)"| B["📈 Top Day\nGainers"]
+
+    A & B --> DEDUP["🔀 Deduplicate\n+ Filter\nno ETFs · no penny stocks"]
+
+    DEDUP --> PRE["🔬 Technical Pre-filter\nFREE — no LLM\nvolume ≥ 1.8× avg\nRSI 55–75\nMACD hist > 0\nPass 2 of 3 checks"]
+
+    PRE -->|"~2–4 candidates\nsurvive"| LLM["⚡ Decision Agent\nLLM call only on\npre-filtered candidates\n~90% API savings"]
+
+    PRE -->|"fail"| SKIP["⛔ Skip\nno LLM call"]
+
+    LLM -->|"conf ≥ 80"| BUY["✅ BUY\nMomentum position"]
+    LLM -->|"conf < 80"| HOLD["⏸️ HOLD"]
+```
+
+---
+
+## Decision Agent — Bull / Bear Debate
+
+Every decision follows a mandatory 3-step process before outputting any action:
+
+```mermaid
+flowchart TD
+    DATA["📥 Input Data\nFundamentals + Technicals\nNews · Insider trades\nMacro regime · Portfolio context"]
+
+    DATA --> S1["Step 1 — 🟢 Bull Case\n3 strongest data-backed reasons to BUY\n(cite specific numbers: RSI value, EPS growth, target upside…)"]
+    DATA --> S2["Step 2 — 🔴 Bear Case\n3 strongest data-backed reasons NOT to buy / to SELL\n(cite specific numbers: MACD signal, insider sale $, debt/equity…)"]
+
+    S1 & S2 --> S3["Step 3 — ⚖️ Verdict\nWeigh both sides\nOnly BUY / SELL when one side clearly dominates"]
+
+    S3 -->|"conf ≥ 75\nand one side clearly wins"| ACT["✅ BUY or SELL"]
+    S3 -->|"conf 60–74\nor mixed signals"| HOLD2["⏸️ HOLD"]
+    S3 -->|"conf < 60\nor insufficient evidence"| HOLD3["⏸️ HOLD"]
+
+    subgraph RULES ["Calibration Rules"]
+        R1["BEAR regime → +5 pts required\nfor any BUY decision"]
+        R2["Insider SELLING → strong bear signal"]
+        R3["Insider BUYING → moderate bull signal"]
+        R4["Negative news → weight bear more"]
+    end
+```
 
 **Sample output:**
 ```json
@@ -177,76 +146,85 @@ This prevents one-sided bias and forces the model to find the best counter-argum
   "symbol": "NVDA",
   "action": "HOLD",
   "confidence": 62,
-  "bull_case": ["RSI 37 approaching oversold", "Analyst target $298 = 46% upside", "Revenue growth 85%"],
-  "bear_case": ["MACD bearish, hist −5.4", "Insider STEVENS sold $221M shares Jun 4", "BEAR regime +5pt bar applies"],
-  "rationale": "Insider sale of $221M outweighs technical oversold setup. Bear side wins on insider signal alone.",
+  "bull_case": [
+    "RSI 37 approaching oversold — historically reversal zone",
+    "Analyst consensus strong_buy, target $298 = 46% upside from $205",
+    "Revenue growth 85.2%, earnings growth 214% — exceptional fundamentals"
+  ],
+  "bear_case": [
+    "MACD histogram −5.42, signal line bearish for 3 weeks",
+    "Insider STEVENS MARK A sold 1,000,000 shares ($221M) on 2026-06-04",
+    "BEAR regime active — SPY below SMA20, confidence bar raised +5pts"
+  ],
+  "rationale": "Insider sale of $221M outweighs technical oversold setup. Bear side wins on insider signal alone. Waiting for regime to flip BULL before entering.",
   "time_horizon": "hold"
 }
 ```
 
 ---
 
-## Capital Allocation — Three Guardrails
-
-```
-Portfolio: $100,000
-│
-├── 20% Cash Reserve Floor ($20,000 locked as dry powder)
-│   └── Unlocks partially at confidence ≥ 88% (up to 50% of reserve per trade)
-│
-├── 65% Core Investing Pool ($65,000 available for core trades)
-│   ├── Core Stocks (no fixed cap — respects MAX_POSITIONS = 5)
-│   └── Core Crypto (capped at 35% of total portfolio = $35,000)
-│
-└── 10% Momentum Budget ($10,000 shared across stocks + crypto momentum)
-    ├── Momentum Stocks — discovered live via Yahoo screeners
-    └── Momentum Crypto — DOGE, AVAX, LINK, UNI
-        (tight exits: −4%/+8% stocks, −6%/+12% crypto)
-```
-
-**Why the reserve?** Expert traders always keep dry powder. When a once-in-a-year opportunity hits (RSI 20, major catalyst), the bot can deploy reserve cash instead of being stuck 100% invested.
-
----
-
 ## Watchlists
 
 ### Core Stocks (editable via dashboard)
-| Symbol | Company |
-|--------|---------|
-| AAPL | Apple |
-| TSLA | Tesla |
-| NVDA | NVIDIA |
-| MSFT | Microsoft |
-| AMZN | Amazon |
-
-Exits: stop-loss −7% · take-profit +15%
+| Symbol | Company | Stop | Target |
+|--------|---------|------|--------|
+| AAPL | Apple | −7% | +15% |
+| TSLA | Tesla | −7% | +15% |
+| NVDA | NVIDIA | −7% | +15% |
+| MSFT | Microsoft | −7% | +15% |
+| AMZN | Amazon | −7% | +15% |
 
 ### Core Crypto (fixed — runs 24/7)
 | Symbol | Asset | Stop | Target |
 |--------|-------|------|--------|
 | SOL/USD | Solana | −12% | +25% |
 
-> **Note:** BTC/USD was removed — Alpaca paper trading never fills BTC market orders (65 cancelled orders, 0 filled). The dedup guard also blocks any symbol with a recently-cancelled buy for 90 minutes, preventing infinite retry loops.
+> **Note:** BTC/USD was removed — Alpaca paper trading accepts BTC orders but never fills them (65 cancelled orders, 0 filled). The dedup guard now also blocks any symbol with a recently-cancelled buy for 90 minutes, preventing infinite retry loops.
 
-Max 35% of total portfolio in crypto (core + momentum combined).
+### Momentum Crypto Universe
+`DOGE/USD` · `AVAX/USD` · `LINK/USD` · `UNI/USD` — fixed to the most liquid volatile coins on Alpaca.
+Exits: −6% stop / +12% take.
 
-### Momentum Universe (self-discovering stocks + fixed crypto)
-Momentum **stocks** are discovered live each cycle from Yahoo Finance screeners — no hardcoded list. The system asks: "what's actually moving today?"
+---
 
-Momentum **crypto** is fixed to the most liquid volatile coins on Alpaca:
-`DOGE/USD` · `AVAX/USD` · `LINK/USD` · `UNI/USD`
+## Risk Management
 
-Exits: −4% stop / +8% take for stocks · −6% stop / +12% take for crypto
+### Position Sizing — scales with LLM confidence
+
+| Confidence | Cash Deployed | When Used |
+|---|---|---|
+| 65 – 79% | 5% of investable cash | Moderate signal, some uncertainty |
+| 80 – 89% | 10% of investable cash | Strong signal, most data aligned |
+| ≥ 90% | 20% of investable cash | Overwhelming evidence |
+| ≥ 88% | Unlocks reserve too | Up to 50% of the 20% reserve |
+
+*Investable cash = `available_cash − (portfolio_value × 0.20)`* (reserves always excluded)
+
+### Stop-Loss / Take-Profit by Tier
+
+| Tier | Stop-Loss | Take-Profit | Rationale |
+|---|---|---|---|
+| Core Stocks | −7% | +15% | Hold through normal volatility |
+| Core Crypto | −12% | +25% | Crypto needs wider room |
+| Momentum Stocks | −4% | +8% | Short-term wave riding |
+| Momentum Crypto | −6% | +12% | Fast in, fast out |
 
 ---
 
 ## Ghost Order Protection
 
-The dedup guard (`get_recent_buy_symbols`) blocks re-buying a symbol if:
-- It had a **filled or pending buy** in the last **15 minutes** (handles positions API lag after crypto fills)
-- It had a **cancelled buy** in the last **90 minutes** (breaks phantom-order retry loops)
+The dedup guard prevents two specific failure modes:
 
-This replaced the previous logic that only tracked non-cancelled orders, which caused BTC/USD to be re-ordered every 18 minutes forever.
+```mermaid
+flowchart LR
+    CHECK["get_recent_buy_symbols()"]
+
+    CHECK -->|"non-cancelled buy\nin last 15 min"| B1["⛔ Block\nPositions API lag\nafter crypto fill"]
+    CHECK -->|"cancelled buy\nin last 90 min"| B2["⛔ Block\nGhost order\nretry loop"]
+    CHECK -->|"nothing recent"| OK["✅ Allow BUY"]
+```
+
+This replaced the old logic that only tracked non-cancelled orders, which caused BTC/USD to be re-ordered every 18 minutes in a loop (65 phantom orders, 0 filled).
 
 ---
 
@@ -255,182 +233,61 @@ This replaced the previous logic that only tracked non-cancelled orders, which c
 ```
 trading_bot/
 │
-├── main.py                 # Entry point
-│                           #   python main.py            → single cycle (GitHub Actions)
-│                           #   python main.py --daemon   → continuous loop (AWS EC2)
+├── main.py                 # Entry point — single cycle (GitHub Actions) or --daemon loop
+├── config.py               # All tuneable constants — push a change, next cycle picks it up
+├── env_loader.py           # Manual .env parser — no python-dotenv needed
+├── watchlist.json          # Stock watchlist — editable via dashboard without redeploying
 │
-├── config.py               # All tuneable constants — edit here, push, done
-├── env_loader.py           # Manual .env parser (no python-dotenv required)
-├── watchlist.json          # Stock watchlist — editable via dashboard UI
-│
-├── orchestrator.py         # Wires everything into one trading cycle
-│                           #   _run_stock_cycle()    — core stocks (market hours)
-│                           #   _run_crypto_cycle()   — core crypto (24/7)
-│                           #   _run_momentum_cycle() — screener → pre-filter → LLM
-│                           #   _build_macro_context()— SPY regime + drawdown for LLM
+├── orchestrator.py         # Wires all agents + execution into one cycle
+│                           #   _run_stock_cycle()     market hours only
+│                           #   _run_crypto_cycle()    24/7
+│                           #   _run_momentum_cycle()  screener → pre-filter → LLM
+│                           #   _build_macro_context() SPY regime + drawdown for LLM
 │
 ├── agents/
 │   ├── fundamental_agent.py  # yfinance: fundamentals + news headlines + insider transactions
 │   ├── technical_agent.py    # RSI, MACD, Bollinger Bands, SMA50/200, OBV via ta library
-│   └── decision_agent.py     # 4-provider failover LLM with mandatory bull/bear debate
+│   └── decision_agent.py     # 4-provider LLM failover + mandatory bull/bear debate
 │
 ├── execution/
-│   ├── alpaca_client.py      # Alpaca Paper Trading REST API wrapper
-│   │                         #   get_recent_buy_symbols() — dedup guard (15 min active, 90 min cancelled)
-│   │                         #   cancel_stale_open_orders() — kills stuck GTC crypto orders only
+│   ├── alpaca_client.py      # Alpaca Paper Trading REST wrapper
+│   │                         #   get_recent_buy_symbols()    dedup guard (15 min / 90 min)
+│   │                         #   cancel_stale_open_orders()  kills stuck GTC crypto orders
 │   ├── risk_manager.py       # Stop-loss, take-profit, position sizing, cash reserve
-│   ├── market_scanner.py     # Live Yahoo Finance screeners (most_actives + day_gainers)
-│   └── telegram_notifier.py  # Trade alerts, risk exits, errors, EOD summary, heartbeat
+│   ├── market_scanner.py     # Yahoo Finance screeners (most_actives + day_gainers)
+│   └── telegram_notifier.py  # Trade alerts, risk exits, EOD summary, heartbeat
 │
 ├── dashboard/
-│   └── app.py              # Streamlit dashboard — 6-tab compact single-view layout
+│   └── app.py              # Streamlit — 6-tab layout, auto-refreshes every 10s
+│                           #   Overview · Positions · Momentum · History · Reports · Prices
 │
-├── .github/
-│   └── workflows/
-│       └── trading_bot.yml # GitHub Actions — triggered by cron-job.org every 2 min
-│                           #   uses requirements-bot.txt (includes cerebras-cloud-sdk)
+├── .github/workflows/
+│   └── trading_bot.yml     # GitHub Actions — triggered by cron-job.org every 2 min
+│                           #   uses requirements-bot.txt
 │
-├── requirements.txt        # Dashboard dependencies only (used by Streamlit Cloud)
-└── requirements-bot.txt    # Full bot dependencies (used by GitHub Actions)
-```
-
----
-
-## Momentum Scanner — How It Discovers Stocks
-
-```
-Every 2-min cycle (market hours):
-│
-▼
-market_scanner.py
-  ├── most_actives screener  (highest volume today)
-  └── day_gainers screener   (biggest % gain today)
-        │
-        ▼  deduplicate + filter (no ETFs, no penny stocks < $2)
-        │
-        ▼  Technical pre-filter (FREE — yfinance, no LLM)
-           volume ≥ 1.8× avg  ·  RSI 55–75  ·  MACD hist > 0
-           Pass 2 of 3 → candidate     Fail → discard immediately
-                │
-                ▼ (typically 2–4 candidates survive)
-           Decision Agent (LLM) → BUY / HOLD
-```
-
-This design saves ~90% of LLM API calls — the expensive model only sees candidates that already show momentum signals.
-
----
-
-## Risk Management
-
-### Position Sizing (scales with LLM confidence)
-| Confidence | Cash Deployed |
-|---|---|
-| 65–79% | 5% of investable cash |
-| 80–89% | 10% of investable cash |
-| ≥ 90% | 20% of investable cash |
-
-Investable cash = `available_cash − (portfolio_value × 0.20)` (reserves excluded)
-
-At confidence ≥ 88%, up to 50% of the reserve floor can be deployed.
-
-### Stop-Loss / Take-Profit
-
-| Type | Stop-Loss | Take-Profit |
-|---|---|---|
-| Core Stocks | −7% | +15% |
-| Core Crypto | −12% | +25% |
-| Momentum Stocks | −4% | +8% |
-| Momentum Crypto | −6% | +12% |
-
-Momentum exits are tighter because the goal is riding short-term waves, not holding through drawdowns.
-
----
-
-## Telegram Alerts
-
-Silent by default — only sends a message when something matters.
-
-**Trade Alert** — every filled order:
-```
-🟢 TRADE ALERT — BUY NVDA
-Units:      12 shares @ $875.20
-Cost:       $10,502.40
-Confidence: 82%
-
-📊 Technical:
-  RSI 28.4 · OVERSOLD
-  MACD · BULLISH (hist +0.0231)
-  Trend · GOLDEN CROSS (SMA50=820.10)
-  Volume · 2.3x avg [HIGH]
-
-🏢 Fundamental:
-  Analyst · Strong Buy · target $950.00 (+8.5%)
-  P/E · 45.2x
-  Revenue growth · +122.0%
-
-💬 Rationale: RSI oversold + golden cross + analyst upgrades
-Cash left:  $52,800.00
-```
-
-**Risk Exit:**
-```
-⚠️ RISK EXIT
-Action: SELL TSLA (STOP LOSS −7.2%)
-Units:  8
-```
-
-**Hourly Heartbeat** (when no trades fire for an hour):
-```
-🤖 BOT HEARTBEAT  (no trades this hour)
-🔴 Stock market CLOSED  ·  🔗 Crypto 24/7
-Portfolio:  $99,786.00
-Cash:       $17,232.00
-Total P&L:  📉 $-214.00
-
-Open Positions:
-  📈 NVDA: 2 shares (+3.2%)
-  🔗 SOL/USD: 1.2 units (+1.8%)
-```
-
-**End-of-Day Summary** (fired 0–6 min after 4 PM ET):
-```
-📅 END OF DAY SUMMARY
-────────────────────────────────
-Trades Today:  3 buys | 1 sells
-Day P&L:       📈 +$234.50
-Total P&L:     📈 +$234.50
-Portfolio:     $100,234.50
-Cash:          $68,120.30
+├── requirements.txt        # Dashboard only (Streamlit Cloud) — plotly, streamlit-autorefresh
+└── requirements-bot.txt    # Full bot (GitHub Actions) — adds cerebras-cloud-sdk
 ```
 
 ---
 
 ## Dashboard
 
-Hosted on [Streamlit Community Cloud](https://streamlit.io/cloud). Auto-deploys on every push to `main`.
-
-**6-tab single-view layout:**
+Live at **[trading-bot-test.streamlit.app](https://trading-bot-test.streamlit.app)** — auto-deploys on every push to `main`.
 
 ```
 ┌─ 8 KPI Metrics ──────────────────────────────────────────────────────────┐
-│ Portfolio │ Cash │ Total P&L │ Positions │ Win Rate │ PF │ Weekly │ Mom  │
+│  Portfolio │ Cash │ Total P&L │ Positions │ Win Rate │ PF │ Weekly │ Mom │
 ├───────────────────────────────────────────────────────────────────────────┤
 │ [📊 Overview] [💼 Positions] [🚀 Momentum] [📜 History] [📋 Reports]      │
 │ [📡 Prices]                                                               │
 │                                                                           │
-│  Overview:   Performance chart (60%) │ Allocation pie (40%)              │
-│              Combined P&L bar — all open positions                       │
-│                                                                           │
-│  Positions:  Merged table (stocks + crypto) with stop/target cols        │
-│                                                                           │
-│  Momentum:   Budget strip + [Screener│Filter│Open│Trades] sub-nav       │
-│                                                                           │
-│  History:    Trade log with All / Stocks / Crypto filter                 │
-│                                                                           │
-│  Reports:    Realized P&L per trade · filters: Side / Range / Type       │
-│              By Day view (collapsible) + All Trades flat table           │
-│                                                                           │
-│  Prices:     Live price tiles (stocks + crypto) + performance stats      │
+│  Overview   Performance chart + Allocation pie + P&L bar                 │
+│  Positions  Merged table (stocks + crypto) with stop/target cols         │
+│  Momentum   Budget strip → Live Screener │ Signal Filter │ Trades        │
+│  History    Trade log — filter: All / Stocks / Crypto                    │
+│  Reports    Realized P&L · filters: Side / Range / Type (By Day or Flat) │
+│  Prices     Live price tiles (stocks + crypto) + performance stats       │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -441,153 +298,192 @@ streamlit run dashboard/app.py
 
 ---
 
-## Configuration (`config.py`)
+## Telegram Alerts
 
-All tunable settings live here. Push a change and the next cycle picks it up automatically.
+**Trade Alert:**
+```
+🟢 TRADE ALERT — BUY NVDA
+Units:      12 shares @ $875.20  |  Cost: $10,502.40
+Confidence: 82%
 
-```python
-# Core watchlists
-WATCHLIST        = ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN"]  # also editable via dashboard
-CRYPTO_WATCHLIST = ["SOL/USD"]                                 # runs 24/7 (BTC removed — never fills on paper)
+📊 RSI 28.4 OVERSOLD · MACD BULLISH · Volume 2.3× avg
+🏢 Strong Buy · target $950 (+8.5%) · Revenue +122%
+💬 RSI oversold + golden cross + analyst upgrades
+Cash left: $52,800.00
+```
 
-# Position limits
-MAX_POSITIONS        = 5
-MAX_CRYPTO_POSITIONS = 2
+**Risk Exit:**
+```
+⚠️ RISK EXIT — SELL TSLA (STOP LOSS −7.2%)
+Units: 8
+```
 
-# Core risk thresholds
-STOP_LOSS_PCT          = 0.07   # 7%  stock stop-loss
-TAKE_PROFIT_PCT        = 0.15   # 15% stock take-profit
-CRYPTO_STOP_LOSS_PCT   = 0.12   # 12% crypto stop-loss
-CRYPTO_TAKE_PROFIT_PCT = 0.25   # 25% crypto take-profit
-CRYPTO_PORTFOLIO_CAP   = 0.35   # max 35% of portfolio in crypto
+**Hourly Heartbeat** (no trades that hour):
+```
+🤖 BOT HEARTBEAT  ·  no trades this hour
+Portfolio: $99,786  ·  Cash: $17,232  ·  P&L: 📉 −$214
+```
 
-# Capital guardrails
-MIN_CASH_RESERVE_PCT      = 0.20  # always keep 20% as dry powder
-RESERVE_DEPLOY_CONFIDENCE = 88    # unlock reserve at ≥88% confidence
-RESERVE_MAX_DEPLOY_PCT    = 0.50  # deploy at most 50% of reserve per trade
-
-# Momentum tier
-MOMENTUM_TOTAL_BUDGET_PCT = 0.10   # 10% shared across stocks + crypto momentum
-MAX_MOMENTUM_POSITIONS    = 4
-MOMENTUM_MIN_CONFIDENCE   = 80     # higher bar than core 65%
-MOMENTUM_VOLUME_RATIO_MIN = 1.8    # 1.8× avg volume required
-MOMENTUM_STOCK_STOP_PCT   = 0.04   # −4%  (tighter than core)
-MOMENTUM_STOCK_TAKE_PCT   = 0.08   # +8%  (faster profit-taking)
-MOMENTUM_CRYPTO_STOP_PCT  = 0.06
-MOMENTUM_CRYPTO_TAKE_PCT  = 0.12
-
-# LLM — 4-provider failover (Cerebras → Groq → Gemini → OpenRouter)
-MIN_CONFIDENCE   = 65
-CEREBRAS_MODEL   = "gpt-oss-120b"           # primary: fastest (~2s)
-GROQ_MODEL       = "llama-3.3-70b-versatile"
-GEMINI_MODEL     = "gemini-2.0-flash"
-OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
-HIST_PERIOD      = "6mo"
+**End-of-Day Summary:**
+```
+📅 END OF DAY SUMMARY
+Trades: 3 buys  1 sell  ·  Day P&L: 📈 +$234.50
+Portfolio: $100,234.50  ·  Cash: $68,120.30
 ```
 
 ---
 
 ## Hosting
 
-### GitHub Actions + cron-job.org (Current — Free)
+### GitHub Actions + cron-job.org (current — free)
 
-[cron-job.org](https://cron-job.org) fires a `workflow_dispatch` POST to GitHub every 2 minutes. GitHub Actions runs the cycle and exits. No server needed.
-
-**Why cron-job.org instead of GitHub's built-in cron?**
-GitHub's scheduler can delay up to 15 minutes on new repos. cron-job.org fires within seconds and is free.
+[cron-job.org](https://cron-job.org) fires a `workflow_dispatch` POST every 2 minutes. GitHub Actions runs the cycle and exits.
 
 **cron-job.org setup:**
 - URL: `https://api.github.com/repos/{owner}/{repo}/actions/workflows/trading_bot.yml/dispatches`
 - Method: `POST`
-- Headers: `Authorization: Bearer {github-pat}`, `Accept: application/vnd.github+json`
+- Headers: `Authorization: Bearer {github-pat}` · `Accept: application/vnd.github+json`
 - Body: `{"ref":"main"}`
-- Schedule: every 2 minutes 24/7 (crypto runs overnight; stock/momentum skip outside market hours automatically)
 
 **LLM quota at 2-minute intervals:**
 
-| Provider | Free Limit | Usage at 2-min | Status |
+| Provider | Free Limit | Est. Daily Usage | Headroom |
 |---|---|---|---|
-| Cerebras | ~60 req/min | ~4/min | ✅ Fine |
-| Groq | 14,400 req/day | ~5,760/day | ✅ Fine |
-| Gemini | 1,500 req/day | overflow only | ✅ Fine |
-| OpenRouter | generous free tier | last resort | ✅ Fine |
+| Cerebras | ~60 req/min | ~4/min | ✅ 15× headroom |
+| Groq | 14,400/day | ~5,760/day | ✅ 2.5× headroom |
+| Gemini | 1,500/day | overflow only | ✅ rarely touched |
+| OpenRouter | generous | last resort | ✅ never normally hit |
 
-### AWS EC2 (Alternative)
+### AWS EC2 (alternative)
 ```bash
-python3 main.py --daemon   # runs every 60 sec during market hours, idles overnight
+python3 main.py --daemon   # runs every 60 sec during market hours
 ```
+
+---
+
+## Configuration (`config.py`)
+
+```python
+# Core watchlists
+WATCHLIST        = ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN"]
+CRYPTO_WATCHLIST = ["SOL/USD"]          # BTC/USD removed — never fills on paper trading
+
+# Position limits
+MAX_POSITIONS        = 5
+MAX_CRYPTO_POSITIONS = 2
+CRYPTO_PORTFOLIO_CAP = 0.35             # max 35% of portfolio in crypto
+
+# Core exits
+STOP_LOSS_PCT          = 0.07           # −7%  stock stop-loss
+TAKE_PROFIT_PCT        = 0.15           # +15% stock take-profit
+CRYPTO_STOP_LOSS_PCT   = 0.12           # −12% crypto stop-loss
+CRYPTO_TAKE_PROFIT_PCT = 0.25           # +25% crypto take-profit
+
+# Capital guardrails
+MIN_CASH_RESERVE_PCT      = 0.20        # always keep 20% locked
+RESERVE_DEPLOY_CONFIDENCE = 88          # unlock reserve at ≥88% confidence
+RESERVE_MAX_DEPLOY_PCT    = 0.50        # max 50% of reserve per trade
+
+# Momentum tier
+MOMENTUM_TOTAL_BUDGET_PCT = 0.10        # 10% shared budget
+MOMENTUM_MIN_CONFIDENCE   = 80          # higher bar than core 65%
+MOMENTUM_VOLUME_RATIO_MIN = 1.8         # 1.8× avg volume required
+MOMENTUM_STOCK_STOP_PCT   = 0.04        # −4% (tighter than core)
+MOMENTUM_STOCK_TAKE_PCT   = 0.08        # +8%
+MOMENTUM_CRYPTO_STOP_PCT  = 0.06
+MOMENTUM_CRYPTO_TAKE_PCT  = 0.12
+
+# LLM — 4-provider automatic failover
+MIN_CONFIDENCE   = 65
+CEREBRAS_MODEL   = "gpt-oss-120b"                          # primary ~2s
+GROQ_MODEL       = "llama-3.3-70b-versatile"
+GEMINI_MODEL     = "gemini-2.0-flash"
+OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+```
+
+### Tuning Guide
+
+| Goal | Setting to change |
+|---|---|
+| Bot trades too rarely | Lower `MIN_CONFIDENCE` to 60 |
+| Bot trades too aggressively | Raise `MIN_CONFIDENCE` to 75 |
+| Stop-outs too frequent | Raise `STOP_LOSS_PCT` |
+| Lock in gains faster | Lower `TAKE_PROFIT_PCT` |
+| More momentum trades | Lower `MOMENTUM_MIN_CONFIDENCE` to 75 |
+| Less crypto exposure | Lower `CRYPTO_PORTFOLIO_CAP` to 0.20 |
+| More dry powder | Raise `MIN_CASH_RESERVE_PCT` to 0.30 |
 
 ---
 
 ## Required Credentials
 
-```
+```bash
 # Alpaca Paper Trading — app.alpaca.markets
 ALPACA_API_KEY=...
 ALPACA_SECRET_KEY=...
 ALPACA_BASE_URL=https://paper-api.alpaca.markets/v2
 
-# LLM — 4-provider failover chain
-CEREBRAS_API_KEY=...     # free at cloud.cerebras.ai  (fastest, 120B model)
-GROQ_API_KEY=...         # free at console.groq.com   (14,400 req/day)
-GOOGLE_API_KEY=...       # free at aistudio.google.com
-OPENROUTER_API_KEY=...   # free at openrouter.ai      (last resort)
+# LLM failover chain
+CEREBRAS_API_KEY=...      # cloud.cerebras.ai   — fastest, 120B model, free
+GROQ_API_KEY=...          # console.groq.com    — 14,400 req/day free
+GOOGLE_API_KEY=...        # aistudio.google.com — 1,500 req/day free
+OPENROUTER_API_KEY=...    # openrouter.ai       — free tier, last resort
 
 # Telegram
-TELEGRAM_BOT_TOKEN=...   # from @BotFather
-TELEGRAM_CHAT_ID=...     # from api.telegram.org/bot{token}/getUpdates
+TELEGRAM_BOT_TOKEN=...    # from @BotFather
+TELEGRAM_CHAT_ID=...      # from api.telegram.org/bot{token}/getUpdates
 ```
 
-For GitHub Actions: add these as **Repository Secrets** (Settings → Secrets → Actions). Never committed to the repo.
-
----
-
-## Tuning Guide
-
-| Goal | Setting to change |
-|------|------------------|
-| Bot trades too rarely | Lower `MIN_CONFIDENCE` to 60 |
-| Bot trades too aggressively | Raise `MIN_CONFIDENCE` to 75 |
-| Positions stopped out too often | Raise `STOP_LOSS_PCT` / `CRYPTO_STOP_LOSS_PCT` |
-| Lock in gains faster | Lower `TAKE_PROFIT_PCT` / `CRYPTO_TAKE_PROFIT_PCT` |
-| More momentum trades | Lower `MOMENTUM_MIN_CONFIDENCE` to 75 |
-| Less crypto exposure | Lower `CRYPTO_PORTFOLIO_CAP` to 0.20 |
-| More dry powder | Raise `MIN_CASH_RESERVE_PCT` to 0.30 |
-
-After any change:
-```bash
-git add config.py && git commit -m "update config" && git push
-```
-The next cycle picks it up automatically.
+Add all as **GitHub Repository Secrets** (Settings → Secrets → Actions). Never committed to the repo.
 
 ---
 
 ## Dependencies
 
-Two requirements files — split so Streamlit Cloud stays lean:
-
-**`requirements.txt`** — Dashboard (Streamlit Cloud):
-```
-yfinance>=0.2.65         market data via Yahoo Finance
-ta>=0.11.0               technical indicators
-google-genai>=2.0.0      Gemini LLM
-requests>=2.31.0         HTTP client
-pandas>=2.3.0
-numpy>=1.26.4
-plotly>=5.22.0           dashboard charts
-streamlit-autorefresh>=1.0.1
-```
-
-**`requirements-bot.txt`** — Trading bot (GitHub Actions):
-```
-# all of the above, plus:
-cerebras-cloud-sdk>=1.21.0   official Cerebras SDK (primary LLM)
-```
+| File | Used by | Contents |
+|---|---|---|
+| `requirements.txt` | Streamlit Cloud (dashboard) | yfinance · ta · google-genai · requests · pandas · numpy · plotly · streamlit-autorefresh |
+| `requirements-bot.txt` | GitHub Actions (trading bot) | all of the above + cerebras-cloud-sdk |
 
 ```bash
-# Dashboard
-pip install -r requirements.txt
-
-# Trading bot (GitHub Actions uses this)
-pip install -r requirements-bot.txt
+pip install -r requirements-bot.txt   # for running the bot locally
 ```
+
+---
+
+## Inspiration & References
+
+This bot was designed by studying the architectures and research behind several leading open-source trading AI projects. Key learnings from each:
+
+### Research Papers & Repositories
+
+| Project | What We Borrowed |
+|---|---|
+| [**TradingAgents**](https://github.com/tauricresearch/tradingagents) — Tauric Research | Multi-agent bull/bear debate before any decision. Forced the LLM to argue both sides with specific data points before committing. Directly inspired our `SYSTEM_PROMPT` structure. |
+| [**FinceptTerminal**](https://github.com/Fincept-Corporation/FinceptTerminal) — Fincept Corp | Evaluated for fundamental + alternative data connectivity. Decided against integrating (C++20 desktop app, not pip-installable, $10,200/yr commercial licence) but the data source ideas influenced what fields we pull from yfinance. |
+
+### Data Sources
+
+| Source | Used For |
+|---|---|
+| [Yahoo Finance (yfinance)](https://github.com/ranaroussi/yfinance) | Stock + crypto prices, fundamentals (P/E, EPS, growth, analyst ratings), news headlines, insider transactions, technical history |
+| [Alpaca Paper Trading API](https://alpaca.markets) | Order execution, position tracking, account state, portfolio history |
+| [SPY via yfinance](https://finance.yahoo.com/quote/SPY) | Market regime detection — BULL when SPY > SMA20, BEAR when below |
+
+### LLM Providers
+
+| Provider | Model | Role |
+|---|---|---|
+| [Cerebras](https://cloud.cerebras.ai) | gpt-oss-120b | Primary — wafer-scale chips, fastest inference (~2s), 120B reasoning model |
+| [Groq](https://console.groq.com) | llama-3.3-70b-versatile | Secondary — dedicated LPU silicon, very fast |
+| [Google Gemini](https://aistudio.google.com) | gemini-2.0-flash | Tertiary — reliable fallback |
+| [OpenRouter](https://openrouter.ai) | llama-3.3-70b:free | Last resort — routes to 100+ models |
+
+### Libraries
+
+| Library | Used For |
+|---|---|
+| [ta](https://github.com/bukosabino/ta) | Technical indicators (RSI, MACD, Bollinger Bands, SMA, OBV) |
+| [cerebras-cloud-sdk](https://github.com/Cerebras/cerebras-cloud-python) | Official Cerebras Python SDK |
+| [streamlit](https://streamlit.io) | Live trading dashboard |
+| [plotly](https://plotly.com/python) | Interactive charts in dashboard |
