@@ -38,16 +38,28 @@ class AlpacaClient:
         }
 
     def _get(self, path, params=None):
-        r = requests.get(f"{self._base}{path}", headers=self._headers, params=params, timeout=15)
-        r.raise_for_status()
-        return r.json()
+        import time as _time
+        for attempt in range(3):
+            try:
+                r = requests.get(
+                    f"{self._base}{path}", headers=self._headers,
+                    params=params, timeout=25,
+                )
+                r.raise_for_status()
+                return r.json()
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                if attempt < 2:
+                    logger.warning(f"Alpaca GET {path} timed out (attempt {attempt+1}/3), retrying in 5s: {e}")
+                    _time.sleep(5)
+                else:
+                    raise
 
     def _post(self, path, body):
-        r = requests.post(f"{self._base}{path}", headers=self._headers, json=body, timeout=15)
+        r = requests.post(f"{self._base}{path}", headers=self._headers, json=body, timeout=25)
         return r
 
     def _delete(self, path):
-        r = requests.delete(f"{self._base}{path}", headers=self._headers, timeout=15)
+        r = requests.delete(f"{self._base}{path}", headers=self._headers, timeout=25)
         return r
 
     def is_market_open(self) -> bool:

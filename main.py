@@ -119,7 +119,15 @@ def run_once():
         market_open = AlpacaClient().is_market_open()
     except Exception as e:
         logger.exception(f"Unhandled error in trading cycle: {e}")
+        # Don't sys.exit(1) — let GitHub Actions mark run as failed but still
+        # attempt the heartbeat/EOD so Telegram always gets something this hour.
+        from execution.telegram_notifier import TelegramNotifier
+        TelegramNotifier().error_alert("Trading cycle crashed", str(e))
         sys.exit(1)
+
+    if _is_top_of_hour():
+        logger.info("Top of hour — sending heartbeat")
+        _send_heartbeat(market_open)
 
     if _is_near_close():
         logger.info("Just after market close — sending end-of-day summary")
