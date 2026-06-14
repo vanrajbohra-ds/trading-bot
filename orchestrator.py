@@ -167,31 +167,6 @@ def _is_momentum_signal(technical) -> bool:
     return fired >= 2
 
 
-def _signals_warrant_llm(technical, pos: dict) -> bool:
-    """True when technical signals justify spending a free-tier LLM call.
-
-    Always True for held positions — we may need a SELL decision.
-    For unowned symbols: only call LLM when at least one meaningful signal fires.
-    Skipping neutral, low-volume candles saves ~60% of daily LLM quota.
-
-    Thresholds:
-      RSI < 35  → oversold (potential reversal BUY)
-      RSI > 72  → overbought (potential reversal SELL)
-      Vol > 1.4x → unusual volume surge (institutional activity)
-    """
-    if pos.get("qty", 0) > 0:
-        return True  # always check held positions — they may need SELL
-    if technical is None or technical.fetch_error:
-        return False  # broken data → nothing for LLM to work with, skip
-    rsi = technical.rsi
-    if rsi is not None and (rsi < 35 or rsi > 72):
-        return True
-    vol = technical.volume_ratio
-    if vol is not None and vol > 1.4:
-        return True
-    return False
-
-
 # ── Core stock cycle ───────────────────────────────────────────────────────────
 
 def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
@@ -225,13 +200,6 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
             telegram.error_alert(f"Data fetch {symbol}", str(e)); continue
 
         pos = positions.get(symbol, {"qty": 0, "avg_entry_price": 0.0})
-        if not _signals_warrant_llm(technical, pos):
-            logger.info(
-                f"[{symbol}] signals neutral "
-                f"(RSI={technical.rsi:.1f}, Vol={technical.volume_ratio:.2f}x) "
-                f"— skipped LLM to preserve quota"
-            )
-            continue
         try:
             decision = decision_agent.decide(
                 fundamental=fundamental, technical=technical,
@@ -330,13 +298,6 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
             telegram.error_alert(f"Data fetch {alpaca_sym}", str(e)); continue
 
         pos = positions.get(alpaca_sym, {"qty": 0, "avg_entry_price": 0.0})
-        if not _signals_warrant_llm(technical, pos):
-            logger.info(
-                f"[{alpaca_sym}] signals neutral "
-                f"(RSI={technical.rsi:.1f}, Vol={technical.volume_ratio:.2f}x) "
-                f"— skipped LLM to preserve quota"
-            )
-            continue
         try:
             decision = decision_agent.decide(
                 fundamental=fundamental, technical=technical,

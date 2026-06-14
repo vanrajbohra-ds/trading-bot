@@ -187,22 +187,39 @@ _PROVIDER_CALLERS = {
 
 
 class DecisionAgent:
+    def __init__(self):
+        # Tracks how many LLM calls have been made this instance (resets each run).
+        # Combined with time-based offset this produces true round-robin across runs.
+        self._call_count = 0
+
     def _call_llm_with_failover(self, prompt: str) -> tuple[str, str]:
-        """Try each provider in LLM_FAILOVER_CHAIN. Returns (response_text, provider_name).
-        Moves to the next provider on rate-limit errors; re-raises other errors immediately."""
+        """Round-robin across providers, falling back on rate-limit errors.
+
+        Starting provider = (time_offset + call_count) % 4, so:
+          - time_offset rotates every 2 min → different lead provider each GitHub Actions run
+          - call_count rotates within a run → each symbol in the same cycle uses a different provider
+
+        This spreads load ~25% per provider instead of Cerebras absorbing 99%.
+        """
+        import time as _time
+        n = len(LLM_FAILOVER_CHAIN)
+        time_offset = int(_time.time() / 120)          # advances once per 2-min cron run
+        start       = (time_offset + self._call_count) % n
+        self._call_count += 1
+        chain = LLM_FAILOVER_CHAIN[start:] + LLM_FAILOVER_CHAIN[:start]
+
         last_err = None
-        for provider in LLM_FAILOVER_CHAIN:
+        for provider in chain:
             caller = _PROVIDER_CALLERS.get(provider)
             if caller is None:
                 continue
             try:
                 result = caller(prompt)
-                if provider != LLM_FAILOVER_CHAIN[0]:
-                    logger.info(f"[LLM] Used fallback provider: {provider}")
+                logger.info(f"[LLM] provider={provider} (slot {chain.index(provider)+1}/{n})")
                 return result, provider
             except Exception as e:
                 if _is_rate_limit_error(e):
-                    logger.warning(f"[LLM] {provider} rate-limited, trying next provider... ({e})")
+                    logger.warning(f"[LLM] {provider} rate-limited, trying next... ({e})")
                     last_err = e
                     continue
                 if _is_missing_key_error(e):
