@@ -15,7 +15,7 @@ flowchart TD
     MAIN -->|24 slash 7| CC["Crypto Cycle\nETH / SOL / DOGE / AVAX"]
     MAIN -->|Stocks + Crypto| MC["Momentum Cycle\nStocks: Yahoo Finance screeners\nCrypto: CoinGecko top-100"]
 
-    SC --> FA["Fundamental Agent\nP/E, EPS, Analyst rating\nNews headlines, Insider trades"]
+    SC --> FA["Fundamental Agent\nP/E, EPS, Analyst rating\nNews headlines, Insider trades\nCongressional trades (STOCK Act)"]
     CC --> FA
     MC --> FA
 
@@ -86,9 +86,9 @@ pie title "Portfolio Target Allocation"
 | Tier | Budget | Rules |
 |---|---|---|
 | 🔒 Cash Reserve | **20%** always locked | Unlocks at confidence ≥ 88% (up to 50% of reserve per trade) |
-| 📈 Core Stocks | Up to 65% investable pool | Max 5 positions · −7% stop / +15% take |
-| 🔗 Core Crypto | Max 35% of total portfolio | ETH / SOL / DOGE / AVAX · −12% stop / +25% take · max 3 positions |
-| 🚀 Momentum | **10%** shared budget | Live-discovered stocks (Yahoo) + crypto (CoinGecko) · −4%/+8% stops |
+| 📈 Core Stocks | Up to 65% investable pool | Max 5 positions · ATR-based dynamic stop/target set at entry |
+| 🔗 Core Crypto | Max 35% of total portfolio | ETH / SOL / DOGE / AVAX · ATR-based dynamic stop/target · max 3 positions |
+| 🚀 Momentum | **10%** shared budget | Live-discovered stocks (Yahoo) + crypto (CoinGecko) · tighter ATR multipliers |
 
 ---
 
@@ -138,7 +138,7 @@ flowchart TD
     S3 -->|conf 60-74 or mixed signals| HOLD2["HOLD"]
     S3 -->|conf below 60| HOLD3["HOLD"]
 
-    ACT --> RULES["Calibration applied automatically\nBEAR regime: +5 pts required for any BUY\nInsider SELLING: strong bear signal\nInsider BUYING: moderate bull signal\nNegative news: bear case weighted higher"]
+    ACT --> RULES["Calibration applied automatically\nBEAR regime: +5 pts required for any BUY\nInsider SELLING: strong bear signal\nInsider BUYING: moderate bull signal\nCongressional BUY 3+ members: strong bull signal\nCongressional BUY 1-2 members: moderate bull signal\nCongressional SELL 2+: moderate bear signal\nNegative news: bear case weighted higher"]
 ```
 
 **Sample output:**
@@ -169,24 +169,26 @@ flowchart TD
 ### Core Stocks (editable via dashboard)
 | Symbol | Company | Stop | Target |
 |--------|---------|------|--------|
-| AAPL | Apple | −7% | +15% |
-| TSLA | Tesla | −7% | +15% |
-| NVDA | NVIDIA | −7% | +15% |
-| MSFT | Microsoft | −7% | +15% |
-| AMZN | Amazon | −7% | +15% |
+| AAPL | Apple | ATR × 2.0 below entry | ATR × 3.0 above entry |
+| TSLA | Tesla | ATR × 2.0 below entry | ATR × 3.0 above entry |
+| NVDA | NVIDIA | ATR × 2.0 below entry | ATR × 3.0 above entry |
+| MSFT | Microsoft | ATR × 2.0 below entry | ATR × 3.0 above entry |
+| AMZN | Amazon | ATR × 2.0 below entry | ATR × 3.0 above entry |
+
+> Stop and target prices are computed from the 14-day ATR at the moment of purchase and frozen there — see [Dynamic Stops](#dynamic-stops--atr-based) below.
 
 ### Core Crypto (fixed — runs 24/7)
 | Symbol | Asset | Stop | Target |
 |--------|-------|------|--------|
-| ETH/USD | Ethereum | −12% | +25% |
-| SOL/USD | Solana | −12% | +25% |
-| DOGE/USD | Dogecoin | −12% | +25% |
-| AVAX/USD | Avalanche | −12% | +25% |
+| ETH/USD | Ethereum | ATR × 2.0 below entry | ATR × 3.0 above entry |
+| SOL/USD | Solana | ATR × 2.0 below entry | ATR × 3.0 above entry |
+| DOGE/USD | Dogecoin | ATR × 2.0 below entry | ATR × 3.0 above entry |
+| AVAX/USD | Avalanche | ATR × 2.0 below entry | ATR × 3.0 above entry |
 
 > **Note:** BTC/USD is excluded — Alpaca paper trading accepts BTC orders but never fills them (65 cancelled orders, 0 filled). The dedup guard blocks any symbol with a recently-cancelled buy for 90 minutes, preventing infinite retry loops.
 
 ### Momentum Crypto (dynamic — via CoinGecko)
-No hardcoded list. Every cycle the bot queries CoinGecko's top 100 coins by 24h volume, filters to Alpaca-tradeable symbols, scores each by `24h_change × (1 + volume/marketcap_ratio × 10)`, and picks the top 3 positive-momentum candidates. Exits: −6% stop / +12% take.
+No hardcoded list. Every cycle the bot queries CoinGecko's top 100 coins by 24h volume, filters to Alpaca-tradeable symbols, scores each by `24h_change × (1 + volume/marketcap_ratio × 10)`, and picks the top 3 positive-momentum candidates. Exits: ATR × 1.5 stop / ATR × 2.0 target (tighter multipliers than core — fast in, fast out).
 
 ---
 
@@ -203,14 +205,39 @@ No hardcoded list. Every cycle the bot queries CoinGecko's top 100 coins by 24h 
 
 *Investable cash = `available_cash − (portfolio_value × 0.20)`* (reserves always excluded)
 
-### Stop-Loss / Take-Profit by Tier
+### Dynamic Stops — ATR-based
 
-| Tier | Stop-Loss | Take-Profit | Rationale |
+Stop-loss and take-profit prices are **computed from the 14-day Average True Range (ATR) at the moment of entry** and frozen there. This means each position gets stops sized to its own volatility profile rather than a one-size-fits-all percentage.
+
+**How ATR stops work:**
+
+```
+ATR(14) = average of |high − low| + |close_prev − high| + |close_prev − low| over 14 days
+            ÷ 3 — a volatility measure independent of absolute price level
+
+stop_price   = entry_price − (stop_mult  × ATR)
+target_price = entry_price + (target_mult × ATR)
+```
+
+| Tier | Stop Multiplier | Target Multiplier | Risk:Reward |
 |---|---|---|---|
-| Core Stocks | −7% | +15% | Hold through normal volatility |
-| Core Crypto | −12% | +25% | Crypto needs wider room |
-| Momentum Stocks | −4% | +8% | Short-term wave riding |
-| Momentum Crypto | −6% | +12% | Fast in, fast out |
+| Core Stocks & Crypto | 2.0× ATR | 3.0× ATR | 1:1.5 |
+| Momentum Stocks & Crypto | 1.5× ATR | 2.0× ATR | 1:1.33 (tighter) |
+
+**Guardrails** prevent extremes on illiquid or low-volatility moments:
+
+| Guardrail | Value | Purpose |
+|---|---|---|
+| Min stop % | 1.5% | Never so tight that noise triggers it |
+| Max stop % | 20% | Never so wide the position bleeds too much |
+| Min target % | 2.5% | Always some upside required |
+| Max target % | 45% | Sanity cap |
+
+**ATR fallback:** if the technical agent cannot compute ATR (insufficient history, `ta` library error), the system substitutes 2% of entry price for stocks and 4% for crypto — then the guardrails clamp from there.
+
+**Persistence:** Stop prices are written to `positions_stops.json` in the repo root immediately after each BUY order fills. The GitHub Actions workflow commits this file back to the repo after every run, so the next stateless run picks up the correct stops via `git checkout`. Positions opened before this feature was deployed fall back to the config percentage thresholds.
+
+**On exit:** When a position is closed (risk exit, LLM SELL, or take-profit), its entry is removed from `positions_stops.json` automatically.
 
 ---
 
@@ -251,7 +278,7 @@ trading_bot/
 │   ├── fundamental_agent.py  # yfinance: fundamentals + news headlines + insider transactions
 │   │                         # Stocks: FinBERT sentiment via HuggingFace API (keyword fallback)
 │   │                         # Crypto: CoinGecko community sentiment votes (no API key needed)
-│   ├── technical_agent.py    # RSI, MACD, Bollinger Bands, SMA50/200, OBV via ta library
+│   ├── technical_agent.py    # RSI, MACD, Bollinger Bands, SMA50/200, OBV, ATR(14) via ta library
 │   ├── fundamental_agent.py  # yfinance fundamentals + FinBERT sentiment + insider trades
 │   │                         # + congressional trades from House/Senate Stock Watcher (free, no key)
 │   └── decision_agent.py     # Round-robin across 4 LLM providers + fallback on 429
@@ -265,6 +292,12 @@ trading_bot/
 │   │                         #   get_recent_buy_symbols()    dedup guard (15 min / 90 min)
 │   │                         #   cancel_stale_open_orders()  kills stuck GTC crypto orders
 │   ├── risk_manager.py       # Stop-loss, take-profit, position sizing, cash reserve
+│   │                         #   check_all_stop_take() uses ATR prices from position_stops when
+│   │                         #   available; falls back to config % for pre-dynamic-stop positions
+│   ├── position_stops.py     # ATR-based dynamic stop/target manager
+│   │                         #   set_stop()    — called on every BUY; writes to positions_stops.json
+│   │                         #   remove_stop() — called on every SELL/exit
+│   │                         #   load_stops()  — called once per run_cycle() at top of orchestrator
 │   ├── market_scanner.py     # Stock discovery: Yahoo screeners (most_actives + day_gainers)
 │   │                         # Crypto discovery: CoinGecko top-100, scored by momentum
 │   └── telegram_notifier.py  # Trade alerts, risk exits, EOD summary, heartbeat
@@ -277,7 +310,11 @@ trading_bot/
 ├── .github/workflows/
 │   └── trading_bot.yml     # GitHub Actions — triggered by cron-job.org every 2 min
 │                           #   uses requirements-bot.txt
+│                           #   commits positions_stops.json back to repo after each run
 │
+├── positions_stops.json    # ATR-based stop/target prices for all open positions
+│                           #   committed back to repo after each run by GitHub Actions
+│                           #   auto-created on first BUY; empty dict {} if no open positions
 ├── requirements.txt        # Dashboard only (Streamlit Cloud) — plotly, streamlit-autorefresh
 └── requirements-bot.txt    # Full bot (GitHub Actions) — adds cerebras-cloud-sdk
 ```
@@ -465,11 +502,13 @@ MAX_POSITIONS        = 5
 MAX_CRYPTO_POSITIONS = 3
 CRYPTO_PORTFOLIO_CAP = 0.35             # max 35% of portfolio in crypto
 
-# Core exits
-STOP_LOSS_PCT          = 0.07           # −7%  stock stop-loss
-TAKE_PROFIT_PCT        = 0.15           # +15% stock take-profit
-CRYPTO_STOP_LOSS_PCT   = 0.12           # −12% crypto stop-loss
-CRYPTO_TAKE_PROFIT_PCT = 0.25           # +25% crypto take-profit
+# Static exit thresholds — FALLBACK ONLY for positions without ATR stop data
+# (positions opened before dynamic stops were deployed, or if ATR computation fails)
+# Active positions use ATR-based prices stored in positions_stops.json instead.
+STOP_LOSS_PCT          = 0.07           # −7%  stock stop-loss (fallback)
+TAKE_PROFIT_PCT        = 0.15           # +15% stock take-profit (fallback)
+CRYPTO_STOP_LOSS_PCT   = 0.12           # −12% crypto stop-loss (fallback)
+CRYPTO_TAKE_PROFIT_PCT = 0.25           # +25% crypto take-profit (fallback)
 
 # Capital guardrails
 MIN_CASH_RESERVE_PCT      = 0.20        # always keep 20% locked
@@ -480,10 +519,12 @@ RESERVE_MAX_DEPLOY_PCT    = 0.50        # max 50% of reserve per trade
 MOMENTUM_TOTAL_BUDGET_PCT = 0.10        # 10% shared budget
 MOMENTUM_MIN_CONFIDENCE   = 80          # higher bar than core 65%
 MOMENTUM_VOLUME_RATIO_MIN = 1.8         # 1.8× avg volume required
-MOMENTUM_STOCK_STOP_PCT   = 0.04        # −4% (tighter than core)
-MOMENTUM_STOCK_TAKE_PCT   = 0.08        # +8%
-MOMENTUM_CRYPTO_STOP_PCT  = 0.06
-MOMENTUM_CRYPTO_TAKE_PCT  = 0.12
+# Note: momentum stop/take percentages below are FALLBACK only — active positions
+# use ATR × 1.5 stop and ATR × 2.0 target (tighter multipliers than core tier)
+MOMENTUM_STOCK_STOP_PCT   = 0.04        # fallback −4%
+MOMENTUM_STOCK_TAKE_PCT   = 0.08        # fallback +8%
+MOMENTUM_CRYPTO_STOP_PCT  = 0.06        # fallback
+MOMENTUM_CRYPTO_TAKE_PCT  = 0.12        # fallback
 
 # LLM — 4-provider round-robin + automatic fallback on 429
 MIN_CONFIDENCE   = 65
@@ -499,8 +540,9 @@ OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 |---|---|
 | Bot trades too rarely | Lower `MIN_CONFIDENCE` to 60 |
 | Bot trades too aggressively | Raise `MIN_CONFIDENCE` to 75 |
-| Stop-outs too frequent | Raise `STOP_LOSS_PCT` |
-| Lock in gains faster | Lower `TAKE_PROFIT_PCT` |
+| Widen stops for high-volatility stocks | Raise `CORE_STOP_MULT` in `execution/position_stops.py` |
+| Tighter stops (more frequent exits) | Lower `CORE_STOP_MULT` (minimum `MIN_STOP_PCT` = 1.5% kicks in) |
+| Better risk:reward ratio | Raise `CORE_TARGET_MULT` (default 3.0×) |
 | More momentum trades | Lower `MOMENTUM_MIN_CONFIDENCE` to 75 |
 | Less crypto exposure | Lower `CRYPTO_PORTFOLIO_CAP` to 0.20 |
 | More dry powder | Raise `MIN_CASH_RESERVE_PCT` to 0.30 |
@@ -580,6 +622,8 @@ This bot was designed by studying the architectures and research behind several 
 | [CoinGecko API](https://www.coingecko.com/en/api) | Momentum crypto discovery — top 100 coins by 24h volume, scored by price change × volume/market-cap ratio. Also provides community sentiment votes (`sentiment_votes_up_percentage`) used as LLM signal for all 16 crypto pairs when yfinance returns no news. |
 | [Alpaca Paper Trading API](https://alpaca.markets) | Order execution, position tracking, account state, portfolio history |
 | [SPY via yfinance](https://finance.yahoo.com/quote/SPY) | Market regime detection — BULL when SPY > SMA20, BEAR when below |
+| [House Stock Watcher](https://house-stock-watcher-data.s3-us-gov-west-1.amazonaws.com/data/all_transactions.json) | Congressional trade disclosures (US STOCK Act) — House members' stock transactions. Community-maintained S3 bucket, free, no API key. |
+| [Senate Stock Watcher](https://senate-stock-watcher-data.s3-us-gov-west-1.amazonaws.com/aggregate/all_transactions.json) | Congressional trade disclosures — Senate members' stock transactions. Same format, free, no API key. |
 
 ### LLM Providers
 

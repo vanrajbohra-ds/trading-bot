@@ -6,7 +6,7 @@ import pandas as pd
 try:
     from ta.momentum import RSIIndicator
     from ta.trend import MACD, SMAIndicator
-    from ta.volatility import BollingerBands
+    from ta.volatility import BollingerBands, AverageTrueRange
     from ta.volume import OnBalanceVolumeIndicator
     TA_AVAILABLE = True
 except ImportError:
@@ -30,6 +30,7 @@ class TechnicalReport:
     golden_cross: Optional[bool] = None
     obv_trend: Optional[str] = None
     volume_ratio: Optional[float] = None
+    atr: Optional[float] = None          # Average True Range (14-day) — used for dynamic stop sizing
 
     def to_prompt_text(self) -> str:
         if self.fetch_error:
@@ -98,6 +99,15 @@ class TechnicalAgent:
             vol_20d = float(volume.tail(20).mean())
             volume_ratio = vol_5d / vol_20d if vol_20d > 0 else None
 
+            try:
+                atr = float(
+                    AverageTrueRange(
+                        high=df["High"], low=df["Low"], close=close, window=14
+                    ).average_true_range().iloc[-1]
+                )
+            except Exception:
+                atr = None
+
             return TechnicalReport(
                 symbol=symbol,
                 current_price=current_price,
@@ -113,6 +123,7 @@ class TechnicalAgent:
                 golden_cross=golden_cross,
                 obv_trend=obv_trend,
                 volume_ratio=volume_ratio,
+                atr=atr,
             )
         except Exception as e:
             return TechnicalReport(symbol=symbol, fetch_error=str(e))

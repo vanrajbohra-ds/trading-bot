@@ -14,6 +14,7 @@ from config import (
     MOMENTUM_CRYPTO_STOP_PCT, MOMENTUM_CRYPTO_TAKE_PCT,
 )
 from execution.market_scanner import get_momentum_candidates, get_momentum_crypto_candidates
+from execution import position_stops
 from agents.fundamental_agent import FundamentalAgent
 from agents.technical_agent import TechnicalAgent
 from agents.decision_agent import DecisionAgent
@@ -173,15 +174,17 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
                      decision_agent, account, positions,
                      bull_market: bool = True,
                      recently_sold: set = None,
-                     macro_context: str = "") -> tuple:
+                     macro_context: str = "",
+                     stops_data: dict = None) -> tuple:
     """Core WATCHLIST stocks. Returns (trades_placed, trades_sold)."""
     stock_pos = {s: p for s, p in positions.items() if "/" not in s}
 
     trades_sold = 0
-    for t in risk.check_all_stop_take(stock_pos):
+    for t in risk.check_all_stop_take(stock_pos, stops_data=stops_data):
         _snap = stock_pos.get(t["symbol"], {})
         if alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])["success"]:
             trades_sold += 1
+            position_stops.remove_stop(t["symbol"])
             telegram.risk_exit_alert(t["symbol"], t["qty"], t["reason"],
                                      avg_entry_price=_snap.get("avg_entry_price"),
                                      current_price=_snap.get("current_price"))
@@ -245,6 +248,10 @@ def _run_stock_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent,
         result = alpaca.submit_market_order(symbol, decision.action, qty)
         if result["success"]:
             trades_placed += 1
+            if decision.action == "BUY":
+                position_stops.set_stop(symbol, technical.current_price, technical.atr)
+            else:
+                position_stops.remove_stop(symbol)
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
             stock_pos = {s: p for s, p in positions.items() if "/" not in s}
@@ -266,7 +273,8 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
                       recently_bought: set = None,
                       recently_sold: set = None,
                       bull_market: bool = True,
-                      macro_context: str = "") -> tuple:
+                      macro_context: str = "",
+                      stops_data: dict = None) -> tuple:
     """Core crypto (ETH, SOL, DOGE, AVAX). Returns (trades_placed, trades_sold)."""
     core_set    = set(CRYPTO_WATCHLIST)
     core_crypto = {s: p for s, p in positions.items() if s in core_set}
@@ -274,10 +282,12 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
     trades_sold = 0
     for t in risk.check_all_stop_take(core_crypto,
                                        stop_loss_pct=CRYPTO_STOP_LOSS_PCT,
-                                       take_profit_pct=CRYPTO_TAKE_PROFIT_PCT):
+                                       take_profit_pct=CRYPTO_TAKE_PROFIT_PCT,
+                                       stops_data=stops_data):
         _snap = core_crypto.get(t["symbol"], {})
         if alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])["success"]:
             trades_sold += 1
+            position_stops.remove_stop(t["symbol"])
             telegram.risk_exit_alert(t["symbol"], t["qty"], t["reason"],
                                      avg_entry_price=_snap.get("avg_entry_price"),
                                      current_price=_snap.get("current_price"))
@@ -359,6 +369,10 @@ def _run_crypto_cycle(alpaca, risk, telegram, fundamental_agent, technical_agent
 
         if result["success"]:
             trades_placed += 1
+            if decision.action == "BUY":
+                position_stops.set_stop(alpaca_sym, technical.current_price, technical.atr)
+            else:
+                position_stops.remove_stop(alpaca_sym)
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
             core_crypto = {s: p for s, p in positions.items() if s in core_set}
@@ -380,7 +394,8 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
                         stock_market_open: bool = True, bull_market: bool = True,
                         recently_bought: set = None,
                         recently_sold: set = None,
-                        macro_context: str = "") -> tuple:
+                        macro_context: str = "",
+                        stops_data: dict = None) -> tuple:
     """
     Hunts for momentum across a broad universe of high-beta stocks + volatile crypto.
 
@@ -425,10 +440,12 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
 
     for t in risk.check_all_stop_take(stock_mom,
                                        stop_loss_pct=MOMENTUM_STOCK_STOP_PCT,
-                                       take_profit_pct=MOMENTUM_STOCK_TAKE_PCT):
+                                       take_profit_pct=MOMENTUM_STOCK_TAKE_PCT,
+                                       stops_data=stops_data):
         _snap = stock_mom.get(t["symbol"], {})
         if alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])["success"]:
             trades_sold += 1
+            position_stops.remove_stop(t["symbol"])
             telegram.risk_exit_alert(t["symbol"], t["qty"], f"[MOMENTUM] {t['reason']}",
                                      avg_entry_price=_snap.get("avg_entry_price"),
                                      current_price=_snap.get("current_price"))
@@ -437,10 +454,12 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
 
     for t in risk.check_all_stop_take(crypto_mom,
                                        stop_loss_pct=MOMENTUM_CRYPTO_STOP_PCT,
-                                       take_profit_pct=MOMENTUM_CRYPTO_TAKE_PCT):
+                                       take_profit_pct=MOMENTUM_CRYPTO_TAKE_PCT,
+                                       stops_data=stops_data):
         _snap = crypto_mom.get(t["symbol"], {})
         if alpaca.submit_market_order(t["symbol"], "SELL", t["qty"])["success"]:
             trades_sold += 1
+            position_stops.remove_stop(t["symbol"])
             telegram.risk_exit_alert(t["symbol"], t["qty"], f"[MOMENTUM] {t['reason']}",
                                      avg_entry_price=_snap.get("avg_entry_price"),
                                      current_price=_snap.get("current_price"))
@@ -533,6 +552,7 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
             result = alpaca.submit_market_order(sym, "SELL", qty)
             if result["success"]:
                 trades_placed += 1
+                position_stops.remove_stop(sym)
                 account.update(alpaca.get_account())
                 _reload_positions(positions, alpaca)
                 momentum_pos = {s: p for s, p in positions.items() if s in universe_set}
@@ -621,6 +641,8 @@ def _run_momentum_cycle(alpaca, risk, telegram, fundamental_agent, technical_age
         if result["success"]:
             trades_placed += 1
             open_momentum_count += 1
+            position_stops.set_stop(sym, technical.current_price or 1.0, technical.atr,
+                                    is_momentum=True)
             account.update(alpaca.get_account())
             _reload_positions(positions, alpaca)
             momentum_pos       = {s: p for s, p in positions.items() if s in universe_set}
@@ -681,6 +703,8 @@ def run_cycle() -> dict:
         f"Regime: {'BULL' if bull_market else 'BEAR'}"
     )
 
+    stops_data = position_stops.load_stops()
+
     s_placed = s_sold = c_placed = c_sold = m_placed = m_sold = 0
 
     if stock_market_open:
@@ -688,7 +712,7 @@ def run_cycle() -> dict:
             alpaca, risk, telegram, fundamental_agent, technical_agent,
             decision_agent, account, positions,
             bull_market=bull_market, recently_sold=recently_sold,
-            macro_context=macro_context)
+            macro_context=macro_context, stops_data=stops_data)
     else:
         logger.info("Stock market closed — skipping core stock cycle")
 
@@ -697,7 +721,7 @@ def run_cycle() -> dict:
         alpaca, risk, telegram, fundamental_agent, technical_agent,
         decision_agent, account, positions,
         recently_bought=recently_bought, recently_sold=recently_sold,
-        bull_market=bull_market, macro_context=macro_context)
+        bull_market=bull_market, macro_context=macro_context, stops_data=stops_data)
 
     # Momentum: crypto 24/7, stocks only in bull regime
     m_placed, m_sold = _run_momentum_cycle(
@@ -705,7 +729,7 @@ def run_cycle() -> dict:
         decision_agent, account, positions,
         stock_market_open=stock_market_open, bull_market=bull_market,
         recently_bought=recently_bought, recently_sold=recently_sold,
-        macro_context=macro_context)
+        macro_context=macro_context, stops_data=stops_data)
 
     total_placed = s_placed + c_placed + m_placed
     total_sold   = s_sold   + c_sold   + m_sold

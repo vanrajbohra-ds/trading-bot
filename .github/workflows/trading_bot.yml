@@ -8,6 +8,8 @@ on:
 jobs:
   trade:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     steps:
@@ -40,3 +42,11 @@ jobs:
           HUGGINGFACE_API_TOKEN: ${{ secrets.HUGGINGFACE_API_TOKEN }}
           TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Commit position stops if changed
+        run: |
+          git config user.email "trading-bot@github.com"
+          git config user.name "Trading Bot"
+          git add positions_stops.json 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "bot: update position stops [skip ci]"
+          git push || true
