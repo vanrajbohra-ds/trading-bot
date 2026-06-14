@@ -519,6 +519,9 @@ GROQ_API_KEY=...          # console.groq.com    — 14,400 req/day free
 GOOGLE_API_KEY=...        # aistudio.google.com — 1,500 req/day free
 OPENROUTER_API_KEY=...    # openrouter.ai       — free tier, last resort
 
+# Congressional trades signal — quiverquant.com (free tier, register for key)
+QUIVER_API_KEY=...        # quiverquant.com/api — congressional buy/sell fed into LLM as signal; skipped if unset
+
 # FinBERT sentiment (stock news) — huggingface.co/settings/tokens
 HUGGINGFACE_API_TOKEN=... # ProsusAI/finbert via Inference API; falls back to keyword scoring if unset
 

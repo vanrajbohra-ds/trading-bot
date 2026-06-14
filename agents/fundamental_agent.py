@@ -67,6 +67,8 @@ class FundamentalReport:
     news_sentiment_label: Optional[str] = None     # BULLISH / BEARISH / NEUTRAL
     earnings_in_days: Optional[int] = None         # days until next earnings (None if >14)
     put_call_ratio: Optional[float] = None         # options P/C ratio (stocks only)
+    # Congressional trades (stocks only — Quiver Quantitative)
+    congressional_trades: list = field(default_factory=list)
     # Crypto fields
     market_cap: Optional[float] = None
     circulating_supply: Optional[float] = None
@@ -111,6 +113,18 @@ class FundamentalReport:
             lines.append("  Insider Activity:")
             for activity in self.insider_activity[:3]:
                 lines.append(f"    • {activity}")
+        if self.congressional_trades:
+            buys  = sum(1 for t in self.congressional_trades if "purchase" in str(t.get("Transaction", "")).lower())
+            sells = sum(1 for t in self.congressional_trades if "sale"     in str(t.get("Transaction", "")).lower())
+            lines.append(f"  Congressional Trades (last 30 days): {buys} buy(s) | {sells} sell(s)")
+            for t in self.congressional_trades[:4]:
+                action  = "BUY"  if "purchase" in str(t.get("Transaction", "")).lower() else "SELL"
+                name    = t.get("Representative", "Unknown")
+                party   = t.get("Party", "?")
+                chamber = t.get("Chamber", "")
+                amount  = t.get("Amount") or t.get("Range") or "undisclosed"
+                date    = str(t.get("Date", ""))[:10]
+                lines.append(f"    • {action} — {name} ({party}, {chamber}) — {amount} on {date}")
         return "\n".join(lines)
 
     def _crypto_prompt(self) -> str:
@@ -273,6 +287,32 @@ class FundamentalAgent:
         except Exception:
             return None
 
+    def _get_congressional_trades(self, symbol: str, days: int = 30) -> list:
+        """Fetch recent congressional trades from Quiver Quantitative (free tier).
+        Returns empty list silently if QUIVER_API_KEY is not set or request fails.
+        Only called for stocks — Congress doesn't disclose crypto trades reliably."""
+        api_key = os.environ.get("QUIVER_API_KEY")
+        if not api_key:
+            return []
+        try:
+            r = requests.get(
+                f"https://api.quiverquant.com/beta/historical/congresstrading/{symbol}",
+                headers={"Authorization": f"Token {api_key}", "Accept": "application/json"},
+                timeout=10,
+            )
+            if not r.ok:
+                return []
+            trades = r.json()
+            if not isinstance(trades, list):
+                return []
+            cutoff = (datetime.datetime.utcnow() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+            recent = [t for t in trades if str(t.get("Date", ""))[:10] >= cutoff]
+            # Sort most recent first
+            recent.sort(key=lambda t: str(t.get("Date", "")), reverse=True)
+            return recent
+        except Exception:
+            return []
+
     # ── Data fetchers ───────────────────────────────────────────────────────────
 
     def _fetch_news(self, ticker) -> list:
@@ -361,6 +401,7 @@ class FundamentalAgent:
 
             news = self._fetch_news(ticker)
             sentiment_score, sentiment_label = self._score_news_sentiment(news)
+            congressional = self._get_congressional_trades(symbol)
 
             return FundamentalReport(
                 symbol=symbol,
@@ -382,6 +423,7 @@ class FundamentalAgent:
                 news_sentiment_label=sentiment_label,
                 earnings_in_days=self._get_earnings_warning(ticker),
                 put_call_ratio=self._get_put_call_ratio(ticker),
+                congressional_trades=congressional,
             )
         except Exception as e:
             return FundamentalReport(symbol=symbol, fetch_error=str(e))
