@@ -39,6 +39,10 @@ CONFIDENCE CALIBRATION:
 - BEAR market regime: raise bar by 5 points for any BUY decision
 - Negative news headlines: weight bear case more heavily
 - Insider SELLING: strong bear signal; insider BUYING: moderate bull signal
+- Congressional BUYING 3+ members (last 30 days): strong bull signal — likely legislative or regulatory tailwind ahead
+- Congressional BUYING 1-2 members: moderate bull signal — monitor for follow-on activity
+- Congressional SELLING 2+ members: moderate bear signal — possible foreknowledge of sector headwinds
+- Congressional activity combined with strong technicals: raise confidence by up to 10 points
 
 Respond ONLY with valid JSON. No markdown, no explanation outside the JSON.
 

@@ -378,13 +378,24 @@ class FundamentalAgent:
             pass
         return headlines
 
-    def _fetch_insider_activity(self, ticker) -> list:
-        """Return up to 3 recent insider transaction strings."""
+    def _fetch_insider_activity(self, ticker, days: int = 90) -> list:
+        """Return up to 4 insider transactions from the last `days` days.
+        Date filter prevents stale sales (6-12 months old) from misleading the LLM
+        into treating them as recent bearish signals."""
         lines = []
         try:
             it = ticker.insider_transactions
             if it is None or it.empty:
                 return lines
+            # Filter to recent transactions only
+            if "Start Date" in it.columns:
+                try:
+                    import pandas as pd
+                    cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+                    dates  = pd.to_datetime(it["Start Date"], errors="coerce")
+                    it     = it[dates >= pd.Timestamp(cutoff)]
+                except Exception:
+                    pass  # date filter failed — fall through to unfiltered
             for _, row in it.head(4).iterrows():
                 try:
                     txn    = str(row.get("Transaction") or row.get("Text") or "").strip()[:30]
