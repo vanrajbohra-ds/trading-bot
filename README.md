@@ -44,22 +44,31 @@ End-to-end process flow — from raw data sources through AI analysis to trade e
 
 ---
 
-## LLM Failover Chain
+## LLM Load Balancing
 
-Every decision automatically falls through to the next provider on any 429 / quota error — the bot never fails on an LLM call during normal trading.
+Every LLM call uses **round-robin** across all 4 providers so each handles ~25% of daily volume — no single provider absorbs the full load and hits its quota. If the assigned provider returns a 429 / quota error, the call automatically falls through to the next in the rotated chain.
+
+**Rotation formula:** `start = (time_offset + call_count) % 4`
+- `time_offset` advances every 2 minutes → different lead provider each GitHub Actions run
+- `call_count` increments per symbol → consecutive symbols within the same run use different providers
 
 ```mermaid
 flowchart LR
-    REQ(["LLM Request"])
+    REQ(["LLM Request\nstart = time+count mod 4"])
 
-    REQ --> C["1. Cerebras\ngpt-oss-120b\nfastest ~2s"]
+    REQ -->|"slot 1 (rotates)"| C["Cerebras\ngpt-oss-120b\n~2s"]
+    REQ -->|"slot 1 (rotates)"| G["Groq\nllama-3.3-70b\n~3s"]
+    REQ -->|"slot 1 (rotates)"| GE["Gemini\ngemini-2.0-flash\n~5s"]
+    REQ -->|"slot 1 (rotates)"| OR["OpenRouter\nllama-3.3-70b free\n~6s"]
+
     C -->|success| OUT(["Decision JSON"])
-    C -->|429 rate limit| G["2. Groq\nllama-3.3-70b\n~3 seconds"]
     G -->|success| OUT
-    G -->|429 rate limit| GE["3. Gemini\ngemini-2.0-flash\n~5 seconds"]
     GE -->|success| OUT
-    GE -->|429 rate limit| OR["4. OpenRouter\nllama-3.3-70b free\nlast resort"]
-    OR --> OUT
+    OR -->|success| OUT
+
+    C -->|429| G
+    G -->|429| GE
+    GE -->|429| OR
 ```
 
 ---
@@ -243,7 +252,8 @@ trading_bot/
 │   │                         # Stocks: FinBERT sentiment via HuggingFace API (keyword fallback)
 │   │                         # Crypto: CoinGecko community sentiment votes (no API key needed)
 │   ├── technical_agent.py    # RSI, MACD, Bollinger Bands, SMA50/200, OBV via ta library
-│   └── decision_agent.py     # 4-provider LLM failover + mandatory bull/bear debate
+│   └── decision_agent.py     # Round-robin across 4 LLM providers + fallback on 429
+│                             #   start = (time_offset + call_count) % 4 — stateless rotation
 │                             #   Missing-key errors skip provider (don't abort the chain)
 │
 ├── execution/
@@ -425,14 +435,14 @@ The workflow sets `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` to run all actions 
 - Headers: `Authorization: Bearer {github-pat}` · `Accept: application/vnd.github+json`
 - Body: `{"ref":"main"}`
 
-**LLM quota at 2-minute intervals:**
+**LLM quota at 2-minute intervals (round-robin, ~25% each):**
 
-| Provider | Free Limit | Est. Daily Usage | Headroom |
+| Provider | Free Limit | Est. Daily Usage (25%) | Headroom |
 |---|---|---|---|
-| Cerebras | ~60 req/min | ~4/min | ✅ 15× headroom |
-| Groq | 14,400/day | ~5,760/day | ✅ 2.5× headroom |
-| Gemini | 1,500/day | overflow only | ✅ rarely touched |
-| OpenRouter | generous | last resort | ✅ never normally hit |
+| Cerebras | ~60 req/min · token-based daily | ~965 calls / ~480K tokens | ✅ well within |
+| Groq | 14,400 req/day | ~965 calls | ✅ 15× headroom |
+| Gemini | 1,500 req/day | ~965 calls | ✅ 535 calls to spare |
+| OpenRouter | generous free tier | ~965 calls | ✅ fine |
 
 ### AWS EC2 (alternative)
 ```bash
@@ -473,7 +483,7 @@ MOMENTUM_STOCK_TAKE_PCT   = 0.08        # +8%
 MOMENTUM_CRYPTO_STOP_PCT  = 0.06
 MOMENTUM_CRYPTO_TAKE_PCT  = 0.12
 
-# LLM — 4-provider automatic failover
+# LLM — 4-provider round-robin + automatic fallback on 429
 MIN_CONFIDENCE   = 65
 CEREBRAS_MODEL   = "gpt-oss-120b"                          # primary ~2s
 GROQ_MODEL       = "llama-3.3-70b-versatile"
@@ -541,6 +551,10 @@ pip install -r requirements-bot.txt   # for running the bot locally
 | Crypto SELL `time_in_force` | `❌ BOT ERROR: Order SELL AVAX/USD — invalid crypto time_in_force` on every crypto stop-loss and LLM SELL | `submit_market_order` hardcoded `"day"` which Alpaca rejects for crypto (only accepts `gtc`/`ioc`/`fok`). All crypto exits were silently failing. | `fc935a4` |
 | LLM failover missing-key skip | All crypto decisions returned `HOLD 0%` when `CEREBRAS_API_KEY` was not in GitHub Secrets | `RuntimeError("CEREBRAS_API_KEY not set")` was re-raised immediately instead of falling through to Groq. Fixed by adding `_is_missing_key_error()` check. | `7d25b49` |
 | Crypto sentiment always `N/A` | `Sentiment=N/A` in every crypto LLM signal log — LLM had no sentiment signal for crypto | yfinance does not return news headlines for crypto tickers (`ETH-USD` etc.). Fixed by falling back to CoinGecko community sentiment votes. | `fc935a4` |
+| Flip-flop churn trades | AVAX/USD bought then sold twice in one hour, both at ~$25 loss each | LLM alternated BUY/SELL on identical signals (RSI oversold vs MACD bearish). Fixed with 30-min sell cooldown (`get_recent_sell_symbols`) + 85% confidence bar for crypto BUYs in BEAR regime. | `8d19f35` |
+| Alpaca API timeout killed cycle | No Telegram messages for hours; `Read timed out (read timeout=15)` error | `_get()` had a 15s timeout with zero retries. One slow Alpaca response crashed the full cycle. Fixed: 3 retries with 5s wait and 25s timeout each. | `1ee8cf3` |
+| Hourly heartbeat never fired | `_send_heartbeat()` existed but Telegram received no hourly status messages | `run_once()` never called `_send_heartbeat()`. Fixed by adding `if _is_top_of_hour(): _send_heartbeat(market_open)` to `run_once()`. | `1ee8cf3` |
+| LLM quota exhaustion (all 4 providers) | All 4 providers returned 429 simultaneously mid-day; SOL/DOGE/AVAX defaulted to `HOLD 0%` | Waterfall fallback sent ~99% of calls to Cerebras. When its daily quota died, the other 3 were hit in rapid burst and also rate-limited. Fixed with round-robin rotation so each provider handles ~25% of calls (~965/day, well within free tier limits). | `09b8035` |
 
 ---
 
