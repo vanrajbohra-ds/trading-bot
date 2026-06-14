@@ -252,6 +252,8 @@ trading_bot/
 │   │                         # Stocks: FinBERT sentiment via HuggingFace API (keyword fallback)
 │   │                         # Crypto: CoinGecko community sentiment votes (no API key needed)
 │   ├── technical_agent.py    # RSI, MACD, Bollinger Bands, SMA50/200, OBV via ta library
+│   ├── fundamental_agent.py  # yfinance fundamentals + FinBERT sentiment + insider trades
+│   │                         # + congressional trades from House/Senate Stock Watcher (free, no key)
 │   └── decision_agent.py     # Round-robin across 4 LLM providers + fallback on 429
 │                             #   start = (time_offset + call_count) % 4 — stateless rotation
 │                             #   Missing-key errors skip provider (don't abort the chain)
@@ -518,9 +520,6 @@ CEREBRAS_API_KEY=...      # cloud.cerebras.ai   — fastest, 120B model, free
 GROQ_API_KEY=...          # console.groq.com    — 14,400 req/day free
 GOOGLE_API_KEY=...        # aistudio.google.com — 1,500 req/day free
 OPENROUTER_API_KEY=...    # openrouter.ai       — free tier, last resort
-
-# Congressional trades signal — quiverquant.com (free tier, register for key)
-QUIVER_API_KEY=...        # quiverquant.com/api — congressional buy/sell fed into LLM as signal; skipped if unset
 
 # FinBERT sentiment (stock news) — huggingface.co/settings/tokens
 HUGGINGFACE_API_TOKEN=... # ProsusAI/finbert via Inference API; falls back to keyword scoring if unset

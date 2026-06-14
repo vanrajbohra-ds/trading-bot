@@ -288,30 +288,67 @@ class FundamentalAgent:
             return None
 
     def _get_congressional_trades(self, symbol: str, days: int = 30) -> list:
-        """Fetch recent congressional trades from Quiver Quantitative (free tier).
-        Returns empty list silently if QUIVER_API_KEY is not set or request fails.
-        Only called for stocks — Congress doesn't disclose crypto trades reliably."""
-        api_key = os.environ.get("QUIVER_API_KEY")
-        if not api_key:
-            return []
+        """Fetch congressional trades from House + Senate Stock Watcher (100% free, no API key).
+        Both sources pull directly from official STOCK Act disclosures filed with Congress.
+        Downloads the full JSON, filters in memory for the target symbol and date window.
+        Returns empty list silently on any network failure."""
+        _HOUSE_URL  = "https://house-stock-watcher-data.s3-us-gov-west-1.amazonaws.com/data/all_transactions.json"
+        _SENATE_URL = "https://senate-stock-watcher-data.s3-us-gov-west-1.amazonaws.com/aggregate/all_transactions.json"
+
+        cutoff = (datetime.datetime.utcnow() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+        trades = []
+
+        # House of Representatives
         try:
-            r = requests.get(
-                f"https://api.quiverquant.com/beta/historical/congresstrading/{symbol}",
-                headers={"Authorization": f"Token {api_key}", "Accept": "application/json"},
-                timeout=10,
-            )
-            if not r.ok:
-                return []
-            trades = r.json()
-            if not isinstance(trades, list):
-                return []
-            cutoff = (datetime.datetime.utcnow() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
-            recent = [t for t in trades if str(t.get("Date", ""))[:10] >= cutoff]
-            # Sort most recent first
-            recent.sort(key=lambda t: str(t.get("Date", "")), reverse=True)
-            return recent
+            r = requests.get(_HOUSE_URL, timeout=15)
+            if r.ok:
+                for t in r.json():
+                    raw_ticker = str(t.get("ticker") or "").strip().upper().rstrip("_")
+                    if raw_ticker != symbol:
+                        continue
+                    date = str(t.get("transaction_date") or t.get("disclosure_date") or "")[:10]
+                    if date < cutoff:
+                        continue
+                    txn = str(t.get("type", "")).lower()
+                    trades.append({
+                        "Date":           date,
+                        "Representative": t.get("representative", "Unknown"),
+                        "Transaction":    "Purchase" if "purchase" in txn else "Sale",
+                        "Amount":         t.get("amount", "undisclosed"),
+                        "Party":          t.get("party", ""),
+                        "Chamber":        "House",
+                    })
         except Exception:
-            return []
+            pass
+
+        # Senate
+        try:
+            r = requests.get(_SENATE_URL, timeout=15)
+            if r.ok:
+                for t in r.json():
+                    raw_ticker = str(t.get("ticker") or "").strip().upper().rstrip("_")
+                    if raw_ticker != symbol:
+                        continue
+                    date = str(t.get("transaction_date") or t.get("disclosure_date") or "")[:10]
+                    if date < cutoff:
+                        continue
+                    txn  = str(t.get("type", "")).lower()
+                    name = t.get("senator") or (
+                        f"{t.get('first_name','')} {t.get('last_name','')}".strip()
+                    ) or "Unknown"
+                    trades.append({
+                        "Date":           date,
+                        "Representative": name,
+                        "Transaction":    "Purchase" if "purchase" in txn else "Sale",
+                        "Amount":         t.get("amount", "undisclosed"),
+                        "Party":          t.get("party", ""),
+                        "Chamber":        "Senate",
+                    })
+        except Exception:
+            pass
+
+        trades.sort(key=lambda t: t["Date"], reverse=True)
+        return trades
 
     # ── Data fetchers ───────────────────────────────────────────────────────────
 
