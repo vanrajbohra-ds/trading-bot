@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import yahooFinance from 'yahoo-finance2';
-import { fetchHistory } from '@/lib/yf-api';
+import { fetchHistory, fetchQuoteDirect } from '@/lib/yf-api';
 import {
   rollingMean, rsi as calcRsi, macd as calcMacd,
   bollingerBands, obv as calcObv, obvTrend, volumeRatio as calcVr,
@@ -8,7 +8,6 @@ import {
 import { toYfSymbol, isCryptoSymbol } from '@/lib/utils';
 import type { ExploreData, OHLCVRow, TechnicalSignals, FundamentalData, NewsItem, InsiderTransaction } from '@/lib/types';
 
-// Cast so we can call without TypeScript complaining (TS errors disabled anyway)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const YF = yahooFinance as any;
 
@@ -34,12 +33,6 @@ function parseRating(r: unknown): string | null {
   // "1.5 - Strong Buy" → "strong buy", "buy" → "buy"
   const m = s.match(/-\s*(.+)$/);
   return (m ? m[1].trim() : s).toLowerCase() || null;
-}
-
-function n(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
-  const num = Number(v);
-  return isFinite(num) && num !== 0 ? num : null;
 }
 
 async function fetchNews(symbol: string): Promise<NewsItem[]> {
@@ -111,57 +104,36 @@ export async function GET(
       };
     });
 
-    // ── 3. Fundamentals via quote() ───────────────────────────────────────────
-    // quote() uses Yahoo Finance v7 (no crumb needed — works on all IPs)
-    // It returns: trailingPE, marketCap, 52W high/low, averageAnalystRating,
-    //             targetMeanPrice, earningsTimestamp, epsForward, bookValue etc.
+    // ── 3. Fundamentals via direct Yahoo Finance v7 quote API ────────────────
+    // Uses fetchQuoteDirect() — plain fetch to v7/finance/quote, no crumb needed.
+    // This sidesteps yahoo-finance2 library version/interop issues entirely.
+    const q = await fetchQuoteDirect(yfsymbol);
+
+    const earningsTs   = q.earningsTimestamp ?? q.earningsTimestampStart ?? 0;
+    const earningsDiff = earningsTs > 0 ? Math.round((earningsTs * 1000 - Date.now()) / 86_400_000) : null;
+    const earningsInDays = earningsDiff !== null && earningsDiff >= 0 && earningsDiff <= 90 ? earningsDiff : null;
+
     let fundamental: FundamentalData = {
-      currentPrice: closes[len-1] ?? null, analystRecommendation: null, analystTargetPrice: null,
-      peRatio: null, revenueGrowth: null, newsSentimentLabel: null, newsSentimentScore: null,
-      week52High: null, week52Low: null, marketCap: null, putCallRatio: null, earningsInDays: null,
-      isCrypto,
+      currentPrice:          q.regularMarketPrice ?? closes[len-1] ?? null,
+      week52High:            q.fiftyTwoWeekHigh,
+      week52Low:             q.fiftyTwoWeekLow,
+      marketCap:             q.marketCap,
+      peRatio:               q.trailingPE ?? q.forwardPE,
+      analystRecommendation: parseRating(q.averageAnalystRating),
+      analystTargetPrice:    q.targetMeanPrice,
+      earningsInDays,
+      revenueGrowth: null, newsSentimentLabel: null, newsSentimentScore: null,
+      putCallRatio: null, isCrypto,
     };
 
-    try {
-      // IMPORTANT: same call signature as prices/route.ts which is confirmed working
-      // args: (symbol, queryOpts, moduleOpts) — queryOpts={} for default fields
-      const q = await YF.quote(yfsymbol, {}, { validateResult: false });
-
-      // Earnings days from earningsTimestamp
-      const earningsTs   = Number(q.earningsTimestamp ?? q.earningsTimestampStart ?? 0);
-      const earningsDiff = earningsTs > 0 ? Math.round((earningsTs * 1000 - Date.now()) / 86_400_000) : null;
-      const earningsInDays = earningsDiff !== null && earningsDiff >= 0 && earningsDiff <= 90 ? earningsDiff : null;
-
-      fundamental = {
-        ...fundamental,
-        currentPrice:          n(q.regularMarketPrice) ?? closes[len-1],
-        week52High:            n(q.fiftyTwoWeekHigh),
-        week52Low:             n(q.fiftyTwoWeekLow),
-        marketCap:             n(q.marketCap),
-        peRatio:               n(q.trailingPE) ?? n(q.forwardPE),
-        analystRecommendation: parseRating(q.averageAnalystRating),
-        analystTargetPrice:    n(q.targetMeanPrice),
-        earningsInDays,
-      };
-    } catch (e) {
-      console.error('quote() failed:', e);
-    }
-
-    // ── 4. Revenue growth via quoteSummary (try, fails gracefully on Vercel) ──
-    // Yahoo Finance v10 requires a crumb which is often blocked on cloud IPs.
-    // We try it anyway — on warm Lambdas or less-restricted IPs it may succeed.
+    // ── 4. Revenue growth via quoteSummary (optional, fails gracefully) ───────
+    // Yahoo Finance v10 requires a crumb — often blocked on cloud provider IPs.
     if (!isCrypto) {
       try {
         const qs  = await YF.quoteSummary(yfsymbol, { modules: ['financialData'] }, { validateResult: false });
         const fin = qs?.financialData ?? {};
         if (fin.revenueGrowth != null) fundamental.revenueGrowth = Number(fin.revenueGrowth?.raw ?? fin.revenueGrowth) || null;
-        if (fin.targetMeanPrice != null && !fundamental.analystTargetPrice) {
-          fundamental.analystTargetPrice = Number(fin.targetMeanPrice?.raw ?? fin.targetMeanPrice) || null;
-        }
-        if (fin.recommendationKey) {
-          fundamental.analystRecommendation = String(fin.recommendationKey).toLowerCase() || fundamental.analystRecommendation;
-        }
-      } catch { /* quoteSummary blocked on this IP — skip */ }
+      } catch { /* quoteSummary blocked on this IP — skip silently */ }
     }
 
     // ── 5. News via direct search (no crumb, always works) ────────────────────

@@ -83,6 +83,54 @@ export async function fetchSearch(
   return { news: (json?.news as Record<string, unknown>[]) ?? [] };
 }
 
+export interface QuoteFields {
+  regularMarketPrice:        number | null;
+  trailingPE:                number | null;
+  forwardPE:                 number | null;
+  marketCap:                 number | null;
+  fiftyTwoWeekHigh:          number | null;
+  fiftyTwoWeekLow:           number | null;
+  averageAnalystRating:      string | null;  // "1.5 - Strong Buy"
+  targetMeanPrice:           number | null;
+  earningsTimestamp:         number | null;
+  earningsTimestampStart:    number | null;
+}
+
+/**
+ * Direct fetch of Yahoo Finance v7 quote — no crumb needed, always works.
+ * Returns null fields rather than throwing when Yahoo Finance omits them.
+ */
+export async function fetchQuoteDirect(symbol: string): Promise<QuoteFields> {
+  const blank: QuoteFields = {
+    regularMarketPrice: null, trailingPE: null, forwardPE: null,
+    marketCap: null, fiftyTwoWeekHigh: null, fiftyTwoWeekLow: null,
+    averageAnalystRating: null, targetMeanPrice: null,
+    earningsTimestamp: null, earningsTimestampStart: null,
+  };
+  try {
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,trailingPE,forwardPE,marketCap,fiftyTwoWeekHigh,fiftyTwoWeekLow,averageAnalystRating,targetMeanPrice,earningsTimestamp,earningsTimestampStart`;
+    const res  = await fetch(url, { headers: HEADERS });
+    if (!res.ok) return blank;
+    const json = await res.json() as Record<string, unknown>;
+    const q    = ((json?.quoteResponse as Record<string, unknown>)?.result as Record<string, unknown>[])?.[0];
+    if (!q) return blank;
+
+    const num = (v: unknown) => { const n = Number(v); return isFinite(n) && n !== 0 ? n : null; };
+    return {
+      regularMarketPrice:     num(q.regularMarketPrice),
+      trailingPE:             num(q.trailingPE),
+      forwardPE:              num(q.forwardPE),
+      marketCap:              num(q.marketCap),
+      fiftyTwoWeekHigh:       num(q.fiftyTwoWeekHigh),
+      fiftyTwoWeekLow:        num(q.fiftyTwoWeekLow),
+      averageAnalystRating:   typeof q.averageAnalystRating === 'string' ? q.averageAnalystRating : null,
+      targetMeanPrice:        num(q.targetMeanPrice),
+      earningsTimestamp:      num(q.earningsTimestamp),
+      earningsTimestampStart: num(q.earningsTimestampStart),
+    };
+  } catch { return blank; }
+}
+
 export async function fetchCurrentPrice(symbol: string): Promise<number | null> {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
