@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import yahooFinance from 'yahoo-finance2';
+import { fetchHistory, fetchQuoteSummary, fetchSearch } from '@/lib/yf-api';
 import {
   rollingMean, ema, rsi as calcRsi, macd as calcMacd,
   bollingerBands, obv as calcObv, obvTrend, volumeRatio as calcVr,
@@ -7,8 +7,8 @@ import {
 import { toYfSymbol, isCryptoSymbol } from '@/lib/utils';
 import type { ExploreData, OHLCVRow, TechnicalSignals, FundamentalData, NewsItem, InsiderTransaction } from '@/lib/types';
 
-const BULL_WORDS  = ['surge', 'soar', 'beat', 'upgrade', 'buy', 'bullish', 'rally', 'strong', 'record', 'growth', 'profit'];
-const BEAR_WORDS  = ['drop', 'fall', 'miss', 'downgrade', 'sell', 'bearish', 'warning', 'probe', 'fraud', 'decline', 'loss', 'cut'];
+const BULL_WORDS = ['surge', 'soar', 'beat', 'upgrade', 'buy', 'bullish', 'rally', 'strong', 'record', 'growth', 'profit'];
+const BEAR_WORDS = ['drop', 'fall', 'miss', 'downgrade', 'sell', 'bearish', 'warning', 'probe', 'fraud', 'decline', 'loss', 'cut'];
 
 function sentimentTag(title: string): '🟢' | '🔴' | '⚪' {
   const t = title.toLowerCase();
@@ -24,11 +24,16 @@ function newsSentiment(news: NewsItem[]): { label: 'BULLISH' | 'BEARISH' | 'NEUT
   return { label, score };
 }
 
-function daysUntil(ts: number | Date | null): number | null {
+function daysUntil(ts: number | null): number | null {
   if (!ts) return null;
-  const d = typeof ts === 'number' ? new Date(ts * 1000) : ts;
-  const diff = Math.round((d.getTime() - Date.now()) / 86_400_000);
+  const diff = Math.round((ts * 1000 - Date.now()) / 86_400_000);
   return diff >= 0 && diff <= 90 ? diff : null;
+}
+
+function raw(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'object' && v !== null && 'raw' in v) return Number((v as Record<string, unknown>).raw) || null;
+  return Number(v) || null;
 }
 
 export async function GET(
@@ -45,16 +50,13 @@ export async function GET(
     const period1 = new Date();
     period1.setFullYear(period1.getFullYear() - 1);
 
-    const histRaw = await yahooFinance.historical(
-      yfsymbol,
-      { period1, interval: '1d' },
-      { validateResult: false },
-    );
+    const histRaw = await fetchHistory(yfsymbol, period1);
+    if (!histRaw.length) throw new Error(`No price data for ${yfsymbol}`);
 
     const closes  = histRaw.map(h => h.close);
     const highs   = histRaw.map(h => h.high);
     const lows    = histRaw.map(h => h.low);
-    const volumes = histRaw.map(h => h.volume ?? 0);
+    const volumes = histRaw.map(h => h.volume);
 
     // ── 2. Compute indicators ─────────────────────────────────────────────────
     const sma20s  = rollingMean(closes, 20);
@@ -85,9 +87,7 @@ export async function GET(
       macdSignal: macdSig,
       volRatio:   vr,
       goldenCross: (s50 !== null && s200 !== null) ? s50 > s200 : null,
-      bbPband,
-      bbUpper,
-      bbLower,
+      bbPband, bbUpper, bbLower,
       obvTrend:   obvT,
       sma20:      sma20s[n - 1],
       sma50:      s50,
@@ -102,7 +102,7 @@ export async function GET(
         high:       h.high,
         low:        h.low,
         close:      h.close,
-        volume:     h.volume ?? 0,
+        volume:     h.volume,
         sma20:      sma20s[idx],
         sma50:      sma50s[idx],
         sma200:     sma200s[idx],
@@ -116,7 +116,7 @@ export async function GET(
       };
     });
 
-    // ── 4. Fundamentals via quoteSummary ──────────────────────────────────────
+    // ── 4. Fundamentals ───────────────────────────────────────────────────────
     let fundamental: FundamentalData = {
       currentPrice: closes[n - 1] ?? null,
       analystRecommendation: null, analystTargetPrice: null,
@@ -129,28 +129,30 @@ export async function GET(
 
     try {
       const modules = isCrypto
-        ? ['price', 'summaryDetail'] as const
-        : ['price', 'summaryDetail', 'financialData', 'defaultKeyStatistics', 'recommendationTrend', 'calendarEvents'] as const;
+        ? ['price', 'summaryDetail']
+        : ['price', 'summaryDetail', 'financialData', 'defaultKeyStatistics', 'calendarEvents'];
 
-      const qs = await yahooFinance.quoteSummary(yfsymbol, { modules }, { validateResult: false });
-
-      const price      = qs.price ?? {};
-      const detail     = qs.summaryDetail ?? {};
-      const financial  = (qs as Record<string, unknown>).financialData as Record<string, unknown> | undefined ?? {};
-      const keyStats   = (qs as Record<string, unknown>).defaultKeyStatistics as Record<string, unknown> | undefined ?? {};
-      const calendar   = (qs as Record<string, unknown>).calendarEvents as Record<string, unknown> | undefined ?? {};
+      const qs         = await fetchQuoteSummary(yfsymbol, modules);
+      const price      = (qs.price      as Record<string, unknown>) ?? {};
+      const detail     = (qs.summaryDetail as Record<string, unknown>) ?? {};
+      const financial  = (qs.financialData as Record<string, unknown>) ?? {};
+      const keyStats   = (qs.defaultKeyStatistics as Record<string, unknown>) ?? {};
+      const calendar   = (qs.calendarEvents as Record<string, unknown>) ?? {};
+      const earnings   = (calendar.earnings as Record<string, unknown>) ?? {};
+      const earningsDateArr = (earnings.earningsDate as Record<string, unknown>[]) ?? [];
+      const firstEarnings   = earningsDateArr[0] ? raw(earningsDateArr[0]) : null;
 
       fundamental = {
         ...fundamental,
-        currentPrice:          Number(price.regularMarketPrice ?? closes[n - 1] ?? 0) || null,
-        week52High:            Number(detail.fiftyTwoWeekHigh ?? 0) || null,
-        week52Low:             Number(detail.fiftyTwoWeekLow  ?? 0) || null,
-        marketCap:             Number(price.marketCap ?? detail.marketCap ?? 0) || null,
-        peRatio:               Number(detail.trailingPE ?? keyStats.trailingPE ?? 0) || null,
-        revenueGrowth:         Number((financial.revenueGrowth as Record<string, unknown>)?.raw ?? financial.revenueGrowth ?? 0) || null,
-        analystTargetPrice:    Number((financial.targetMeanPrice as Record<string, unknown>)?.raw ?? financial.targetMeanPrice ?? 0) || null,
-        analystRecommendation: String((financial.recommendationKey as string) ?? '') || null,
-        earningsInDays:        daysUntil((calendar.earnings as Record<string, unknown>)?.earningsDate as number ?? null),
+        currentPrice:          raw(price.regularMarketPrice) ?? closes[n - 1],
+        week52High:            raw(detail.fiftyTwoWeekHigh),
+        week52Low:             raw(detail.fiftyTwoWeekLow),
+        marketCap:             raw(price.marketCap) ?? raw(detail.marketCap),
+        peRatio:               raw(detail.trailingPE) ?? raw(keyStats.trailingPE),
+        revenueGrowth:         raw(financial.revenueGrowth),
+        analystTargetPrice:    raw(financial.targetMeanPrice),
+        analystRecommendation: String(financial.recommendationKey ?? '') || null,
+        earningsInDays:        daysUntil(firstEarnings),
         isCrypto,
       };
     } catch { /* use defaults */ }
@@ -158,8 +160,8 @@ export async function GET(
     // ── 5. News ───────────────────────────────────────────────────────────────
     let news: NewsItem[] = [];
     try {
-      const sr = await yahooFinance.search(yfsymbol, { newsCount: 10, quotesCount: 0 }, { validateResult: false });
-      news = ((sr.news ?? []) as Record<string, unknown>[]).slice(0, 10).map(n => ({
+      const sr = await fetchSearch(yfsymbol, 10);
+      news = sr.news.slice(0, 10).map(n => ({
         dt:     n.providerPublishTime ? new Date(Number(n.providerPublishTime) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
         title:  String(n.title ?? ''),
         source: String(n.publisher ?? ''),
@@ -167,7 +169,6 @@ export async function GET(
       }));
     } catch { /* no news */ }
 
-    // Apply sentiment from news
     const sent = newsSentiment(news);
     fundamental.newsSentimentLabel = sent.label;
     fundamental.newsSentimentScore = sent.score;
@@ -176,36 +177,30 @@ export async function GET(
     let insider: InsiderTransaction[] = [];
     if (!isCrypto) {
       try {
-        const it = await yahooFinance.quoteSummary(yfsymbol, { modules: ['insiderTransactions'] }, { validateResult: false });
-        const txns = ((it as Record<string, unknown>).insiderTransactions as Record<string, unknown> | undefined)?.transactions;
+        const it   = await fetchQuoteSummary(yfsymbol, ['insiderTransactions']);
+        const txns = ((it.insiderTransactions as Record<string, unknown>)?.transactions) as Record<string, unknown>[] | undefined;
         if (Array.isArray(txns)) {
-          // Filter last 90 days
           const cutoff = Date.now() - 90 * 86_400_000;
           insider = txns
-            .filter((t: Record<string, unknown>) => {
-              const ts = Number((t.startDate as Record<string, unknown>)?.raw ?? 0) * 1000;
-              return ts >= cutoff;
-            })
+            .filter(t => (raw(t.startDate) ?? 0) * 1000 >= cutoff)
             .slice(0, 5)
-            .map((t: Record<string, unknown>) => ({
-              name:   String((t.filerName as string) ?? ''),
-              role:   String((t.filerRelation as string) ?? ''),
-              shares: Number((t.shares as Record<string, unknown>)?.raw ?? 0),
-              value:  Number((t.value as Record<string, unknown>)?.raw ?? 0),
-              type:   String((t.transactionDescription as string) ?? ''),
-              date:   new Date(Number((t.startDate as Record<string, unknown>)?.raw ?? 0) * 1000).toISOString().slice(0, 10),
+            .map(t => ({
+              name:   String(t.filerName ?? ''),
+              role:   String(t.filerRelation ?? ''),
+              shares: raw(t.shares) ?? 0,
+              value:  raw(t.value)  ?? 0,
+              type:   String(t.transactionDescription ?? ''),
+              date:   new Date((raw(t.startDate) ?? 0) * 1000).toISOString().slice(0, 10),
             }));
         }
       } catch { /* no insider data */ }
     }
 
-    const result: ExploreData = {
+    return NextResponse.json({
       symbol, yfsymbol, isCrypto,
       currentPrice: fundamental.currentPrice,
       chart, technical, fundamental, news, insider,
-    };
-
-    return NextResponse.json(result);
+    } as ExploreData);
   } catch (e) {
     return NextResponse.json({ symbol, error: String(e) } as Partial<ExploreData>, { status: 500 });
   }
