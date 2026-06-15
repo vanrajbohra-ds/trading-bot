@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:      #080812;
+  --surface: #0d0d1a;
+  --card:    #111122;
+  --border:  #1e1e35;
+  --green:   #4ade80;
+  --red:     #f87171;
+  --amber:   #fbbf24;
+  --blue:    #60a5fa;
+  --muted:   #6b7280;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  background: var(--bg);
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Table */
+table { border-collapse: collapse; width: 100%; }
+th { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+td { font-size: 0.82rem; padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.025); }
+
+/* Recharts overrides */
+.recharts-tooltip-wrapper { z-index: 10 !important; }
+.recharts-cartesian-axis-tick-value { fill: var(--muted); font-size: 11px; }
+.recharts-text { fill: var(--muted); }
+
+/* Focus ring */
+button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
