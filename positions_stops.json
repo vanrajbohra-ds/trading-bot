@@ -18,5 +18,15 @@
     "target_pct": 9.0,
     "tier": "core",
     "entry_date": "2026-06-15"
+  },
+  "PLBL": {
+    "stop_price": 7.380593,
+    "target_price": 10.716108,
+    "entry_price": 8.8101,
+    "atr_used": 0.953004,
+    "stop_pct": 16.23,
+    "target_pct": 21.63,
+    "tier": "momentum",
+    "entry_date": "2026-06-15"
   }
 }
