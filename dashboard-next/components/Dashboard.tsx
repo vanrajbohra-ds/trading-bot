@@ -220,7 +220,7 @@ export default function Dashboard() {
             <Spinner text="Loading account data…" />
           ) : (
             <>
-              {tab === 'overview'  && <OverviewTab  positions={positions} />}
+              {tab === 'overview'  && <OverviewTab  positions={positions} cash={kpis.cash} />}
               {tab === 'positions' && <PositionsTab positions={positions} />}
               {tab === 'momentum'  && (
                 <MomentumTab

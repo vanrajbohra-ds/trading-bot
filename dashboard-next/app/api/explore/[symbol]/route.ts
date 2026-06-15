@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { fetchHistory, fetchQuoteSummary, fetchSearch } from '@/lib/yf-api';
+import yahooFinance from 'yahoo-finance2';
+import { fetchHistory } from '@/lib/yf-api';
 import {
   rollingMean, ema, rsi as calcRsi, macd as calcMacd,
   bollingerBands, obv as calcObv, obvTrend, volumeRatio as calcVr,
@@ -129,10 +130,10 @@ export async function GET(
 
     try {
       const modules = isCrypto
-        ? ['price', 'summaryDetail']
-        : ['price', 'summaryDetail', 'financialData', 'defaultKeyStatistics', 'calendarEvents'];
+        ? ['price', 'summaryDetail'] as const
+        : ['price', 'summaryDetail', 'financialData', 'defaultKeyStatistics', 'calendarEvents'] as const;
 
-      const qs         = await fetchQuoteSummary(yfsymbol, modules);
+      const qs         = await (yahooFinance as unknown as Record<string, (s: string, o: unknown, opts: unknown) => Promise<Record<string, unknown>>>).quoteSummary(yfsymbol, { modules }, { validateResult: false });
       const price      = (qs.price      as Record<string, unknown>) ?? {};
       const detail     = (qs.summaryDetail as Record<string, unknown>) ?? {};
       const financial  = (qs.financialData as Record<string, unknown>) ?? {};
@@ -160,8 +161,9 @@ export async function GET(
     // ── 5. News ───────────────────────────────────────────────────────────────
     let news: NewsItem[] = [];
     try {
-      const sr = await fetchSearch(yfsymbol, 10);
-      news = sr.news.slice(0, 10).map(n => ({
+      const yf = yahooFinance as unknown as Record<string, (s: string, o: unknown, opts: unknown) => Promise<Record<string, unknown>>>;
+      const sr = await yf.search(yfsymbol, { newsCount: 10, quotesCount: 0 }, { validateResult: false });
+      news = ((sr.news ?? []) as Record<string, unknown>[]).slice(0, 10).map(n => ({
         dt:     n.providerPublishTime ? new Date(Number(n.providerPublishTime) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
         title:  String(n.title ?? ''),
         source: String(n.publisher ?? ''),
@@ -177,8 +179,9 @@ export async function GET(
     let insider: InsiderTransaction[] = [];
     if (!isCrypto) {
       try {
-        const it   = await fetchQuoteSummary(yfsymbol, ['insiderTransactions']);
-        const txns = ((it.insiderTransactions as Record<string, unknown>)?.transactions) as Record<string, unknown>[] | undefined;
+        const yfi  = yahooFinance as unknown as Record<string, (s: string, o: unknown, opts: unknown) => Promise<Record<string, unknown>>>;
+        const it   = await yfi.quoteSummary(yfsymbol, { modules: ['insiderTransactions'] }, { validateResult: false });
+        const txns = ((it as Record<string, unknown>).insiderTransactions as Record<string, unknown> | undefined)?.transactions as Record<string, unknown>[] | undefined;
         if (Array.isArray(txns)) {
           const cutoff = Date.now() - 90 * 86_400_000;
           insider = txns

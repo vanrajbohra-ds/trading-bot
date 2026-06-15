@@ -9,9 +9,9 @@ import type { Position, PortfolioHistory } from '@/lib/types';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
-interface Props { positions: Position[] }
+interface Props { positions: Position[]; cash: number }
 
-export default function OverviewTab({ positions }: Props) {
+export default function OverviewTab({ positions, cash }: Props) {
   const { data: hist } = useSWR<PortfolioHistory>('/api/portfolio-history', fetcher, { refreshInterval: 300_000 });
 
   const stockPos  = positions.filter(p => !CRYPTO_SYMBOLS.has(p.symbol));
@@ -52,7 +52,7 @@ export default function OverviewTab({ positions }: Props) {
           <AllocationPie
             stockVal={stockVal}
             cryptoVal={cryptoVal}
-            cash={0}
+            cash={cash}
           />
         </div>
       </div>
