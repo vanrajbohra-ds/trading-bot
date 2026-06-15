@@ -122,14 +122,14 @@ export default function Dashboard() {
 
   /* ── Render ───────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-[#0d0d1a] text-[#e2e8f0] flex flex-col">
+    <div className="h-screen bg-[#0f1117] text-[#e2e8f0] flex flex-col overflow-hidden">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 bg-[#0d0d1a]/95 backdrop-blur border-b border-[#1e1e35]">
+      <header className="shrink-0 z-40 bg-[#161b27] border-b border-[#2d3748]">
         <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center gap-4">
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-green-400 text-lg font-bold">▲</span>
             <span className="font-bold text-white tracking-tight">TradingBot</span>
-            <span className="hidden sm:inline text-[10px] font-semibold uppercase bg-[#111122] border border-[#1e1e35] text-[#6b7280] px-2 py-0.5 rounded-full ml-1">
+            <span className="hidden sm:inline text-[10px] font-semibold uppercase bg-[#1c2333] border border-[#2d3748] text-[#6b7280] px-2 py-0.5 rounded-full ml-1">
               Paper
             </span>
           </div>
@@ -144,14 +144,14 @@ export default function Dashboard() {
 
           <button
             onClick={() => setWatchOpen(v => !v)}
-            className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border border-[#1e1e35] bg-[#111122] text-[#9ca3af] hover:text-white hover:border-green-800/50 transition-colors"
+            className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border border-[#2d3748] bg-[#1c2333] text-[#9ca3af] hover:text-white hover:border-green-800/50 transition-colors"
           >
             📋 Watchlist ({watchlist.length})
           </button>
         </div>
       </header>
 
-      <main className="flex-1 max-w-screen-2xl mx-auto w-full px-4 py-4 space-y-4">
+      <main className="flex-1 flex flex-col overflow-hidden max-w-screen-2xl mx-auto w-full px-4 pt-3 gap-3">
         {/* KPI strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           <KpiCard
@@ -198,14 +198,14 @@ export default function Dashboard() {
         </div>
 
         {/* Tab navigation */}
-        <div className="flex gap-1 overflow-x-auto pb-1 border-b border-[#1e1e35]">
+        <div className="flex gap-1 overflow-x-auto pb-1 border-b border-[#2d3748]">
           {TABS.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`shrink-0 px-4 py-2 text-xs font-semibold rounded-t transition-colors whitespace-nowrap ${
                 tab === t.key
-                  ? 'bg-[#111122] text-green-400 border-b-2 border-green-400 -mb-px'
+                  ? 'bg-[#1c2333] text-green-400 border-b-2 border-green-400 -mb-px'
                   : 'text-[#6b7280] hover:text-[#9ca3af]'
               }`}
             >
@@ -214,8 +214,8 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Tab body */}
-        <div>
+        {/* Tab body — scrollable, fills remaining height */}
+        <div className="flex-1 overflow-y-auto pb-4 min-h-0">
           {isLoading && tab !== 'explore' ? (
             <Spinner text="Loading account data…" />
           ) : (
@@ -245,8 +245,8 @@ export default function Dashboard() {
             className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
             onClick={() => setWatchOpen(false)}
           />
-          <aside className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-[#0d0d1a] border-l border-[#1e1e35] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e1e35]">
+          <aside className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-[#0f1117] border-l border-[#2d3748] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#2d3748]">
               <h2 className="font-bold text-sm">📋 Watchlist</h2>
               <button
                 onClick={() => setWatchOpen(false)}
@@ -257,14 +257,14 @@ export default function Dashboard() {
             </div>
 
             {/* Add symbol */}
-            <div className="p-4 border-b border-[#1e1e35]">
+            <div className="p-4 border-b border-[#2d3748]">
               <div className="flex gap-2">
                 <input
                   value={watchInput}
                   onChange={e => setWatchInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addSymbol()}
                   placeholder="Add symbol (AAPL, ETH/USD…)"
-                  className="flex-1 px-3 py-2 bg-[#111122] border border-[#1e1e35] rounded-lg text-sm text-white placeholder-[#4b5563] focus:outline-none focus:border-green-500/50"
+                  className="flex-1 px-3 py-2 bg-[#1c2333] border border-[#2d3748] rounded-lg text-sm text-white placeholder-[#4b5563] focus:outline-none focus:border-green-500/50"
                 />
                 <button
                   onClick={addSymbol}
@@ -284,7 +284,7 @@ export default function Dashboard() {
                 watchlist.map(sym => (
                   <div
                     key={sym}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-[#111122] border border-[#1e1e35] group"
+                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-[#1c2333] border border-[#2d3748] group"
                   >
                     <span className="font-semibold text-sm">{sym}</span>
                     <button
@@ -298,7 +298,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div className="p-4 border-t border-[#1e1e35] text-[10px] text-[#4b5563] text-center leading-relaxed">
+            <div className="p-4 border-t border-[#2d3748] text-[10px] text-[#4b5563] text-center leading-relaxed">
               Changes sync to GitHub repo on save.<br />
               Bot picks up the new watchlist on next cycle.
             </div>

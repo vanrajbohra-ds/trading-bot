@@ -3,39 +3,66 @@
 @tailwind utilities;
 
 :root {
-  --bg:      #080812;
-  --surface: #0d0d1a;
-  --card:    #111122;
-  --border:  #1e1e35;
-  --green:   #4ade80;
-  --red:     #f87171;
-  --amber:   #fbbf24;
-  --blue:    #60a5fa;
-  --muted:   #6b7280;
+  --bg:      #0f1117;
+  --surface: #161b27;
+  --card:    #1c2333;
+  --border:  #2d3748;
+  --green:   #34d399;
+  --red:     #fc8181;
+  --amber:   #f6c90e;
+  --blue:    #63b3ed;
+  --muted:   #718096;
+  --text:    #e2e8f0;
+  --text2:   #a0aec0;
 }
 
 * { box-sizing: border-box; }
 
 html, body {
   background: var(--bg);
-  color: #e2e8f0;
+  color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
 }
 
+#__next, main { height: 100%; }
+
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--surface); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #4a5568; }
 
 /* Table */
 table { border-collapse: collapse; width: 100%; }
-th { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
-td { font-size: 0.82rem; padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 9px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+td {
+  font-size: 0.82rem;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(255,255,255,0.025); }
+tr:hover td { background: rgba(255,255,255,0.03); }
 
 /* Recharts overrides */
 .recharts-tooltip-wrapper { z-index: 10 !important; }
