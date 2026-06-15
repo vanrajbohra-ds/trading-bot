@@ -28,5 +28,15 @@
     "target_pct": 21.63,
     "tier": "momentum",
     "entry_date": "2026-06-15"
+  },
+  "AAPL": {
+    "stop_price": 281.396609,
+    "target_price": 317.755092,
+    "entry_price": 295.940002,
+    "atr_used": 7.271696,
+    "stop_pct": 4.91,
+    "target_pct": 7.37,
+    "tier": "core",
+    "entry_date": "2026-06-15"
   }
 }
