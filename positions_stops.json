@@ -8,5 +8,15 @@
     "target_pct": 13.75,
     "tier": "core",
     "entry_date": "2026-06-15"
+  },
+  "MSFT": {
+    "stop_price": 373.915025,
+    "target_price": 433.57746,
+    "entry_price": 397.779999,
+    "atr_used": 11.932487,
+    "stop_pct": 6.0,
+    "target_pct": 9.0,
+    "tier": "core",
+    "entry_date": "2026-06-15"
   }
 }
