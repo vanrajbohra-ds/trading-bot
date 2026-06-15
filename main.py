@@ -125,10 +125,6 @@ def run_once():
         TelegramNotifier().error_alert("Trading cycle crashed", str(e))
         sys.exit(1)
 
-    if _is_top_of_hour():
-        logger.info("Top of hour — sending heartbeat")
-        _send_heartbeat(market_open)
-
     if _is_near_close():
         logger.info("Just after market close — sending end-of-day summary")
         _send_daily_summary()
