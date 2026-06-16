@@ -1,14 +1,4 @@
 {
-  "ETH/USD": {
-    "stop_price": 1657.865961,
-    "target_price": 2081.676094,
-    "entry_price": 1827.390015,
-    "atr_used": 84.762027,
-    "stop_pct": 9.28,
-    "target_pct": 13.92,
-    "tier": "core",
-    "entry_date": "2026-06-15"
-  },
   "MSFT": {
     "stop_price": 373.915025,
     "target_price": 433.57746,
