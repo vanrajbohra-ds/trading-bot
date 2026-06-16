@@ -30,12 +30,12 @@
     "entry_date": "2026-06-16"
   },
   "ETH/USD": {
-    "stop_price": 1615.388859,
-    "target_price": 2036.491602,
-    "entry_price": 1783.829956,
-    "atr_used": 84.220549,
-    "stop_pct": 9.44,
-    "target_pct": 14.16,
+    "stop_price": 1610.983812,
+    "target_price": 2035.999258,
+    "entry_price": 1780.98999,
+    "atr_used": 85.003089,
+    "stop_pct": 9.55,
+    "target_pct": 14.32,
     "tier": "core",
     "entry_date": "2026-06-16"
   }
