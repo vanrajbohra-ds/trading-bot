@@ -20,14 +20,14 @@
     "entry_date": "2026-06-15"
   },
   "AAPL": {
-    "stop_price": 281.396609,
-    "target_price": 317.755092,
-    "entry_price": 295.940002,
-    "atr_used": 7.271696,
-    "stop_pct": 4.91,
+    "stop_price": 283.106013,
+    "target_price": 319.703468,
+    "entry_price": 297.744995,
+    "atr_used": 7.319491,
+    "stop_pct": 4.92,
     "target_pct": 7.37,
     "tier": "core",
-    "entry_date": "2026-06-15"
+    "entry_date": "2026-06-16"
   },
   "ETH/USD": {
     "stop_price": 1615.388859,
