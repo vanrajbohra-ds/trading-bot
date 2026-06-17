@@ -9,16 +9,6 @@
     "tier": "core",
     "entry_date": "2026-06-15"
   },
-  "NVDA": {
-    "stop_price": 192.989899,
-    "target_price": 232.502646,
-    "entry_price": 208.794998,
-    "atr_used": 7.902549,
-    "stop_pct": 7.57,
-    "target_pct": 11.35,
-    "tier": "core",
-    "entry_date": "2026-06-16"
-  },
   "AMZN": {
     "stop_price": 230.745764,
     "target_price": 269.281364,
