@@ -19,16 +19,6 @@
     "tier": "core",
     "entry_date": "2026-06-16"
   },
-  "ETH/USD": {
-    "stop_price": 1605.199412,
-    "target_price": 2020.050919,
-    "entry_price": 1771.140015,
-    "atr_used": 82.970301,
-    "stop_pct": 9.37,
-    "target_pct": 14.05,
-    "tier": "core",
-    "entry_date": "2026-06-17"
-  },
   "LYG": {
     "stop_price": 5.43332,
     "target_price": 5.903908,
