@@ -9,16 +9,6 @@
     "tier": "core",
     "entry_date": "2026-06-17"
   },
-  "AMZN": {
-    "stop_price": 230.745764,
-    "target_price": 269.281364,
-    "entry_price": 246.160004,
-    "atr_used": 7.70712,
-    "stop_pct": 6.26,
-    "target_pct": 9.39,
-    "tier": "core",
-    "entry_date": "2026-06-16"
-  },
   "LYG": {
     "stop_price": 5.43332,
     "target_price": 5.903908,
