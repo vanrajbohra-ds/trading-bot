@@ -19,16 +19,6 @@
     "tier": "momentum",
     "entry_date": "2026-06-17"
   },
-  "ETH/USD": {
-    "stop_price": 1506.305944,
-    "target_price": 1941.791084,
-    "entry_price": 1680.5,
-    "atr_used": 87.097028,
-    "stop_pct": 10.37,
-    "target_pct": 15.55,
-    "tier": "core",
-    "entry_date": "2026-06-18"
-  },
   "AAPL": {
     "stop_price": 283.394067,
     "target_price": 318.833918,
