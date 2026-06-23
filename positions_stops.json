@@ -19,16 +19,6 @@
     "tier": "momentum",
     "entry_date": "2026-06-17"
   },
-  "DOGE/USD": {
-    "stop_price": 0.07772,
-    "target_price": 0.094995,
-    "entry_price": 0.08463,
-    "atr_used": 0.003455,
-    "stop_pct": 8.16,
-    "target_pct": 12.25,
-    "tier": "core",
-    "entry_date": "2026-06-22"
-  },
   "NVDA": {
     "stop_price": 198.019276,
     "target_price": 234.496087,
