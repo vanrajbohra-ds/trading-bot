@@ -1,14 +1,4 @@
 {
-  "MSFT": {
-    "stop_price": 359.758931,
-    "target_price": 418.96161,
-    "entry_price": 383.440002,
-    "atr_used": 11.840536,
-    "stop_pct": 6.18,
-    "target_pct": 9.26,
-    "tier": "core",
-    "entry_date": "2026-06-17"
-  },
   "LYG": {
     "stop_price": 5.43332,
     "target_price": 5.903908,
