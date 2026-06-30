@@ -8,5 +8,15 @@
     "target_pct": 4.77,
     "tier": "momentum",
     "entry_date": "2026-06-17"
+  },
+  "ETH/USD": {
+    "stop_price": 1402.672167,
+    "target_price": 1789.191822,
+    "entry_price": 1557.280029,
+    "atr_used": 77.303931,
+    "stop_pct": 9.93,
+    "target_pct": 14.89,
+    "tier": "core",
+    "entry_date": "2026-06-30"
   }
 }
