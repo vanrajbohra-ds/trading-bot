@@ -1,14 +1,4 @@
 {
-  "LYG": {
-    "stop_price": 5.43332,
-    "target_price": 5.903908,
-    "entry_price": 5.635,
-    "atr_used": 0.134454,
-    "stop_pct": 3.58,
-    "target_pct": 4.77,
-    "tier": "momentum",
-    "entry_date": "2026-06-17"
-  },
   "ETH/USD": {
     "stop_price": 1405.402148,
     "target_price": 1791.921803,
