@@ -1,13 +1,13 @@
 {
   "ETH/USD": {
-    "stop_price": 1589.850744,
-    "target_price": 1976.723823,
-    "entry_price": 1744.599976,
-    "atr_used": 77.374616,
-    "stop_pct": 8.87,
-    "target_pct": 13.31,
+    "stop_price": 1619.806572,
+    "target_price": 2008.889996,
+    "entry_price": 1775.439941,
+    "atr_used": 77.816685,
+    "stop_pct": 8.77,
+    "target_pct": 13.15,
     "tier": "core",
-    "entry_date": "2026-07-06"
+    "entry_date": "2026-07-07"
   },
   "SOL/USD": {
     "stop_price": 72.794076,
