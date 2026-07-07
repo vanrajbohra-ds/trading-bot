@@ -10,13 +10,13 @@
     "entry_date": "2026-07-07"
   },
   "SOL/USD": {
-    "stop_price": 72.794076,
-    "target_price": 91.633891,
-    "entry_price": 80.330002,
-    "atr_used": 3.767963,
-    "stop_pct": 9.38,
-    "target_pct": 14.07,
+    "stop_price": 74.503465,
+    "target_price": 92.969802,
+    "entry_price": 81.889999,
+    "atr_used": 3.693267,
+    "stop_pct": 9.02,
+    "target_pct": 13.53,
     "tier": "core",
-    "entry_date": "2026-07-06"
+    "entry_date": "2026-07-07"
   }
 }
