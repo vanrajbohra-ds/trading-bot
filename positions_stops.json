@@ -8,5 +8,15 @@
     "target_pct": 12.39,
     "tier": "core",
     "entry_date": "2026-07-10"
+  },
+  "SOL/USD": {
+    "stop_price": 72.076812,
+    "target_price": 89.50979,
+    "entry_price": 79.050003,
+    "atr_used": 3.486596,
+    "stop_pct": 8.82,
+    "target_pct": 13.23,
+    "tier": "core",
+    "entry_date": "2026-07-10"
   }
 }
