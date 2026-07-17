@@ -1,14 +1,4 @@
 {
-  "ETH/USD": {
-    "stop_price": 1720.760331,
-    "target_price": 2094.534552,
-    "entry_price": 1870.27002,
-    "atr_used": 74.754844,
-    "stop_pct": 7.99,
-    "target_pct": 11.99,
-    "tier": "core",
-    "entry_date": "2026-07-16"
-  },
   "DOGE/USD": {
     "stop_price": 0.06754,
     "target_price": 0.081891,
