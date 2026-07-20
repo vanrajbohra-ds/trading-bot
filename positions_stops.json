@@ -1,14 +1,4 @@
 {
-  "AVAX/USD": {
-    "stop_price": 6.045457,
-    "target_price": 7.406815,
-    "entry_price": 6.59,
-    "atr_used": 0.272272,
-    "stop_pct": 8.26,
-    "target_pct": 12.39,
-    "tier": "core",
-    "entry_date": "2026-07-20"
-  },
   "ETH/USD": {
     "stop_price": 1780.621283,
     "target_price": 2120.14321,
