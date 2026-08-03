@@ -1,11 +1,11 @@
 {
   "DOGE/USD": {
-    "stop_price": 0.065725,
-    "target_price": 0.077412,
-    "entry_price": 0.0704,
+    "stop_price": 0.065665,
+    "target_price": 0.077352,
+    "entry_price": 0.07034,
     "atr_used": 0.002337,
-    "stop_pct": 6.64,
-    "target_pct": 9.96,
+    "stop_pct": 6.65,
+    "target_pct": 9.97,
     "tier": "core",
     "entry_date": "2026-08-03"
   },
