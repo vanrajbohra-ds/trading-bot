@@ -1,13 +1,13 @@
 {
   "AVAX/USD": {
-    "stop_price": 5.985977,
-    "target_price": 7.371035,
-    "entry_price": 6.54,
-    "atr_used": 0.277012,
-    "stop_pct": 8.47,
-    "target_pct": 12.71,
+    "stop_price": 6.161213,
+    "target_price": 7.628181,
+    "entry_price": 6.748,
+    "atr_used": 0.293393,
+    "stop_pct": 8.7,
+    "target_pct": 13.04,
     "tier": "core",
-    "entry_date": "2026-08-03"
+    "entry_date": "2026-08-04"
   },
   "DOGE/USD": {
     "stop_price": 0.065756,
