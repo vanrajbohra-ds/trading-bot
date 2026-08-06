@@ -1,11 +1,11 @@
 {
   "AVAX/USD": {
-    "stop_price": 6.146268,
-    "target_price": 7.465597,
-    "entry_price": 6.674,
-    "atr_used": 0.263866,
-    "stop_pct": 7.91,
-    "target_pct": 11.86,
+    "stop_price": 5.854377,
+    "target_price": 7.253435,
+    "entry_price": 6.414,
+    "atr_used": 0.279812,
+    "stop_pct": 8.73,
+    "target_pct": 13.09,
     "tier": "core",
     "entry_date": "2026-08-06"
   },
