@@ -1,14 +1,4 @@
 {
-  "SOL/USD": {
-    "stop_price": 71.197186,
-    "target_price": 82.154226,
-    "entry_price": 75.580002,
-    "atr_used": 2.191408,
-    "stop_pct": 5.8,
-    "target_pct": 8.7,
-    "tier": "core",
-    "entry_date": "2026-08-10"
-  },
   "AVAX/USD": {
     "stop_price": 5.988903,
     "target_price": 7.226646,
