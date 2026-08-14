@@ -1,11 +1,21 @@
 {
   "SOL/USD": {
-    "stop_price": 71.245569,
-    "target_price": 81.256646,
-    "entry_price": 75.25,
-    "atr_used": 2.002215,
-    "stop_pct": 5.32,
-    "target_pct": 7.98,
+    "stop_price": 71.110469,
+    "target_price": 81.184295,
+    "entry_price": 75.139999,
+    "atr_used": 2.014765,
+    "stop_pct": 5.36,
+    "target_pct": 8.04,
+    "tier": "core",
+    "entry_date": "2026-08-14"
+  },
+  "DOGE/USD": {
+    "stop_price": 0.065514,
+    "target_price": 0.075429,
+    "entry_price": 0.06948,
+    "atr_used": 0.001983,
+    "stop_pct": 5.71,
+    "target_pct": 8.56,
     "tier": "core",
     "entry_date": "2026-08-14"
   }
