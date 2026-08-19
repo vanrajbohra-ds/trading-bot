@@ -1,14 +1,4 @@
 {
-  "SOL/USD": {
-    "stop_price": 72.051185,
-    "target_price": 81.498227,
-    "entry_price": 75.830002,
-    "atr_used": 1.889408,
-    "stop_pct": 4.98,
-    "target_pct": 7.47,
-    "tier": "core",
-    "entry_date": "2026-08-17"
-  },
   "DOGE/USD": {
     "stop_price": 0.066619,
     "target_price": 0.075422,
